@@ -76,7 +76,12 @@ Then edit:
 /sdd-apply              # dispatch a fresh coder per task, two-stage review each
 /sdd-verify             # full suite + end-to-end check
 /swarm      <work>      # fan out independent subtasks to parallel coders (cap 3)
+/coding-pipeline <task> # ONE task through coder → reviewer → tester (no decomposition)
 ```
+
+`/coding-pipeline` is the decomposition-free path: when the code can't be split
+but you still want fresh-eyes review and verification, it runs a single task
+through the full implement → review → test loop.
 
 Or invoke a specialist directly: `@explorer map the auth module`,
 `@reviewer review this diff`.

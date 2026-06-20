@@ -1,0 +1,62 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "//": "Spec-driven-development (SDD) subagent setup for OpenCode. See README.md for the why. IMPORTANT: model IDs below are examples and date quickly — update them to the current models you have access to (check https://opencode.ai/docs and your provider). The structure is what matters.",
+
+  "small_model": "anthropic/claude-haiku-4-5",
+
+  "agent": {
+    "orchestrator": {
+      "description": "Master coordinator. Decomposes a request into independent, bounded tasks, then delegates each to a specialist subagent and integrates the results. Use proactively for any multi-step feature, migration, or audit.",
+      "mode": "primary",
+      "model": "anthropic/claude-opus-4-8",
+      "temperature": 0.1,
+      "permission": {
+        "task": {
+          "explorer": "allow",
+          "coder": "allow",
+          "reviewer": "allow",
+          "tester": "allow",
+          "*": "deny"
+        }
+      }
+    },
+
+    "explorer": {
+      "description": "Fast, read-only codebase mapper. Finds where things live and how patterns are used, and returns a concise summary — never edits. Use proactively before any implementation to gather context cheaply.",
+      "mode": "subagent",
+      "model": "anthropic/claude-haiku-4-5",
+      "temperature": 0.1,
+      "tools": { "write": false, "edit": false, "patch": false }
+    },
+
+    "coder": {
+      "description": "Bounded implementer. Receives ONE scoped task with fresh context and implements it end to end. May spawn the tester to validate its own work (task_budget caps the loop).",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-6",
+      "temperature": 0.1,
+      "task_budget": 3,
+      "permission": {
+        "task": {
+          "tester": "allow",
+          "*": "deny"
+        }
+      }
+    },
+
+    "reviewer": {
+      "description": "Independent code reviewer. Reads a diff and judges spec-compliance first, then code quality. Read-only — it reports findings, it does not fix. Run as the second stage of review after the coder finishes.",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-6",
+      "temperature": 0.1,
+      "tools": { "write": false, "edit": false, "patch": false }
+    },
+
+    "tester": {
+      "description": "Test author and runner. Writes/updates tests for a change and runs the suite, returning pass/fail plus failures. Invoked by the coder or the orchestrator.",
+      "mode": "subagent",
+      "model": "anthropic/claude-haiku-4-5",
+      "temperature": 0.1
+    }
+  }
+}

@@ -35,5 +35,6 @@ decompose, delegate, and integrate. Follow the SDD loop:
 Rules:
 - Prefer many small, reviewable tasks over one big one.
 - Keep your own context lean — pull detail into subagent briefs, not into here.
-- Never let a subagent invoke another without a budget; loops are capped.
+- A subagent can only delegate where its `permission.task` allows it (the coder
+  may call the tester; nothing else) — keep that graph tight.
 - If a task can't be made independent, say so and sequence it explicitly.

@@ -24,8 +24,10 @@ what's still open — so you can trust the config and ignore the hype.
    `CLAUDE_CODE_SUBAGENT_MODEL` env var.
 8. **`description` is the delegation lever** — "use proactively" style phrasing
    makes the tool delegate more often.
-9. **`task` permission (glob) + `task_budget`** gate and bound subagent-to-
-   subagent spawning, preventing infinite loops.
+9. **`task` permission (glob)** gates subagent-to-subagent spawning
+   (deny-by-default delegation graph). To bound an agent's iterations, use the
+   `steps` field. (NOTE: `task_budget` is **not** a real OpenCode field — an
+   earlier draft used it; it's silently ignored. Corrected here.)
 10. **gotar/opencode-config** demonstrates an orchestrator plus
     coder/builder/reviewer/tester/analyst specialists, with documented
     delegate-vs-inline heuristics and a `/swarm` parallel dispatch capped at 3.
@@ -57,8 +59,8 @@ deep research adds / corrects:
   transfer to coding** — so SDD's value for coding rests on
   decomposition/review discipline, not on that benchmark.
 - Concrete, verifiable mechanics to rely on instead: `description`-driven
-  delegation, per-agent `model` + `small_model` routing, and
-  `task` permission + `task_budget` guards.
+  delegation, per-agent `model` + `small_model` routing, and the deny-by-default
+  `task` permission graph.
 
 ## Open questions
 

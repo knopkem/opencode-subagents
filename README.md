@@ -93,9 +93,10 @@ Or invoke a specialist directly: `@explorer map the auth module`,
   ("use proactively before any implementation") makes delegation happen more.
 - **Per-agent model routing.** Each agent sets its own `model`; `small_model` in
   `opencode.json` routes cheap internal tasks to a fast model.
-- **`task` permission + `task_budget`.** Subagents can spawn others only where
-  explicitly allowed, and `task_budget` caps the loop so an implementer→tester
-  cycle can't run away.
+- **`task` permission.** Subagents can spawn others only where explicitly
+  allowed (the coder may call the tester; everything else is denied) — a
+  deny-by-default delegation graph. OpenCode has no per-agent spawn budget; to
+  cap an agent's iterations use the `steps` field.
 - **AGENTS.md.** Compact project rules injected into every fresh-context
   subagent so they don't reinvent your conventions.
 

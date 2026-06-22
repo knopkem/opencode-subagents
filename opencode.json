@@ -1,8 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  "//": "Spec-driven-development (SDD) subagent setup for OpenCode. See README.md for the why. IMPORTANT: model IDs below are examples and date quickly — update them to the current models you have access to (check https://opencode.ai/docs and your provider). The structure is what matters.",
-
   "small_model": "anthropic/claude-haiku-4-5",
 
   "agent": {
@@ -27,15 +25,14 @@
       "mode": "subagent",
       "model": "anthropic/claude-haiku-4-5",
       "temperature": 0.1,
-      "tools": { "write": false, "edit": false, "patch": false }
+      "permission": { "edit": "deny" }
     },
 
     "coder": {
-      "description": "Bounded implementer. Receives ONE scoped task with fresh context and implements it end to end. May spawn the tester to validate its own work (task_budget caps the loop).",
+      "description": "Bounded implementer. Receives ONE scoped task with fresh context and implements it end to end. May spawn the tester to validate its own work (gated by task permission below).",
       "mode": "subagent",
       "model": "anthropic/claude-sonnet-4-6",
       "temperature": 0.1,
-      "task_budget": 3,
       "permission": {
         "task": {
           "tester": "allow",
@@ -49,7 +46,7 @@
       "mode": "subagent",
       "model": "anthropic/claude-sonnet-4-6",
       "temperature": 0.1,
-      "tools": { "write": false, "edit": false, "patch": false }
+      "permission": { "edit": "deny" }
     },
 
     "tester": {

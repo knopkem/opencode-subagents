@@ -6,10 +6,8 @@ description: >-
 mode: subagent
 model: anthropic/claude-haiku-4-5
 temperature: 0.1
-tools:
-  write: false
-  edit: false
-  patch: false
+permission:
+  edit: deny
 ---
 
 You are the **explorer**. Your job is to answer a scoped "where / how" question

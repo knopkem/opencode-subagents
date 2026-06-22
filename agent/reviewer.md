@@ -6,10 +6,8 @@ description: >-
 mode: subagent
 model: anthropic/claude-sonnet-4-6
 temperature: 0.1
-tools:
-  write: false
-  edit: false
-  patch: false
+permission:
+  edit: deny
 ---
 
 You are the **reviewer**, and you did not write this code — stay skeptical.

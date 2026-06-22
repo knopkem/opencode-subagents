@@ -56,18 +56,17 @@ planning and judgement. That tiering is where the cost savings come from.
 
 ## Install
 
-```bash
-# global config
-cp -r agent command opencode.json ~/.config/opencode/
-# AGENTS.md goes in your PROJECT root (it's per-project rules)
-cp AGENTS.md /path/to/your/project/AGENTS.md
-```
+See **[INSTALL.md](INSTALL.md)** for two options:
 
-Then edit:
-- **`opencode.json`** / `agent/*.md` — set the `model` fields to models you
-  actually have access to (the defaults are illustrative and **model IDs date
-  quickly** — check the [OpenCode docs](https://opencode.ai/docs)).
-- **`AGENTS.md`** — replace the template with your project's real conventions.
+- **Adaptive install (recommended)** — open OpenCode in the cloned repo and paste
+  the scoped prompt from INSTALL.md. It copies the files (merging, not
+  clobbering), detects the models you actually have and fills in the placeholder
+  IDs, and validates against your installed OpenCode — while being explicitly
+  forbidden from rewriting the agent prompts or permission graph. This fixes the
+  one thing a static repo can't get right for you: model IDs date fast and differ
+  per account.
+- **Manual install** — plain copy into `~/.config/opencode/`, then hand-edit the
+  `model:` fields and `AGENTS.md`.
 
 ## Use
 

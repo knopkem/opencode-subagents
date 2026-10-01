@@ -3,7 +3,7 @@ description: >-
   Bounded implementer. Receives ONE scoped task with fresh context and
   implements it end to end. May spawn the tester to validate its own work.
 mode: subagent
-model: opencode/nemotron-3.5-lightning-free
+model: opencode/big-pickle
 reasoningEffort: low
 chat_template_kwargs:
   enable_thinking: false

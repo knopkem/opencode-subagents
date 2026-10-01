@@ -4,7 +4,7 @@ description: >-
   are used, then returns a concise summary. Never edits. Use proactively
   before any implementation to gather context cheaply.
 mode: subagent
-model: opencode/nemotron-3.5-lightning-free
+model: opencode/big-pickle
 reasoningEffort: low
 chat_template_kwargs:
   enable_thinking: false

@@ -31,12 +31,14 @@ drift. So the tool keeps coding inline and farms out the wide lookups.
 ## The idea: spec-driven development
 
 1. **Explore** — a read-only agent maps the code and returns a summary.
-2. **Decompose** — split the work into *independent, bounded* tasks.
-3. **Dispatch fresh** — each task goes to a new subagent with **zero context**
+2. **Plan** — a planner writes a durable `PLAN.md` (and a tailored `AGENTS.md`
+   when the project has none), giving every later step a shared spec.
+3. **Decompose** — split the plan into *independent, bounded* tasks.
+4. **Dispatch fresh** — each task goes to a new subagent with **zero context**
    from the others (no pollution, no drift). Everything it needs is in the brief.
-4. **Two-stage review** — one pass for spec-compliance, a separate one for code
-   quality, by an agent that didn't write the code.
-5. **Integrate** — run the full suite and validate end to end.
+5. **Two-stage review** — one pass for spec-compliance against the plan, a
+   separate one for code quality, by an agent that didn't write the code.
+6. **Integrate** — run the full suite and validate end to end.
 
 Search is independent by nature; coding isn't — *unless you pre-decompose it*.
 SDD is the discipline that makes implementation delegable.
@@ -45,42 +47,41 @@ SDD is the discipline that makes implementation delegable.
 
 | Agent | Mode | Model tier | Job |
 |---|---|---|---|
-| `orchestrator` | primary | premium | Decompose, delegate, integrate. Writes no app code itself. |
-| `explorer` | subagent | cheap, read-only | Map the codebase, return a tight summary. |
-| `coder` | subagent | mid | Implement ONE bounded task from a self-contained brief. |
-| `reviewer` | subagent | mid, read-only | Spec-compliance pass, then quality pass. |
-| `tester` | subagent | cheap | Write/run tests, report failures verbatim. |
+| `orchestrator` | primary | planner | Decompose, delegate, integrate. Writes no app code itself. |
+| `planner` | subagent | planner | Write PLAN.md + a tailored AGENTS.md. Docs only. |
+| `explorer` | subagent | builder, read-only | Map the codebase, return a tight summary. |
+| `coder` | subagent | builder | Implement ONE bounded task from a self-contained brief. |
+| `reviewer` | subagent | planner, read-only | Spec-compliance against PLAN.md, then quality. |
+| `tester` | subagent | builder | Write/run tests, report failures verbatim. |
 
-Cheap models do the narrow, bounded work; premium models are reserved for
-planning and judgement. That tiering is where the cost savings come from.
+One strong model plans and reviews; one fast model does the narrow work. That
+tiering is where the speed savings come from.
 
 ## Install
 
-See **[INSTALL.md](INSTALL.md)** for two options:
+See **[INSTALL.md](INSTALL.md)**:
 
-- **Adaptive install (recommended)** — open OpenCode in the cloned repo and paste
-  the scoped prompt from INSTALL.md. It copies the files (merging, not
-  clobbering), detects the models you actually have and fills in the placeholder
-  IDs, and validates against your installed OpenCode — while being explicitly
-  forbidden from rewriting the agent prompts or permission graph. This fixes the
-  one thing a static repo can't get right for you: model IDs date fast and differ
-  per account.
-- **Manual install** — plain copy into `~/.config/opencode/`, then hand-edit the
-  `model:` fields and `AGENTS.md`.
+- **Scripted install (recommended)** — `./scripts/set-models.py` picks your
+  planner and builder from `opencode models`, saves the selection to gitignored
+  `models.local.json`, renders `agent.local/`, and links it into
+  `~/.config/opencode/agent`. The repo only ever ships placeholders, so model
+  IDs never enter git history.
+- **Manual install** — copy the agent files and fill the placeholders yourself.
 
 ## Use
 
 ```
-/sdd-init   <feature>   # explore + write a decomposed spec, then stop for approval
-/sdd-apply              # dispatch a fresh coder per task, two-stage review each
-/sdd-verify             # full suite + end-to-end check
-/swarm      <work>      # fan out independent subtasks to parallel coders (cap 3)
-/coding-pipeline <task> # ONE task through coder → reviewer → tester (no decomposition)
+/init-agents             # explore + generate a tailored AGENTS.md for this project
+/sdd-init   <feature>    # explore + write PLAN.md, then stop for approval
+/sdd-apply               # dispatch a fresh coder per task, two-stage review each
+/sdd-verify              # full suite + end-to-end check
+/swarm      <work>       # fan out independent subtasks to parallel coders (cap 3)
+/coding-pipeline <task>  # ONE task through plan → coder → reviewer → tester
 ```
 
 `/coding-pipeline` is the decomposition-free path: when the code can't be split
-but you still want fresh-eyes review and verification, it runs a single task
-through the full implement → review → test loop.
+but you still want a plan and fresh-eyes review, it runs a single task through
+the full plan → implement → review → test loop.
 
 Or invoke a specialist directly: `@explorer map the auth module`,
 `@reviewer review this diff`.
@@ -90,8 +91,9 @@ Or invoke a specialist directly: `@explorer map the auth module`,
 - **`description` drives delegation.** OpenCode/Claude Code decide *when* to use
   a subagent largely from its `description`. Phrasing it as a clear trigger
   ("use proactively before any implementation") makes delegation happen more.
-- **Per-agent model routing.** Each agent sets its own `model`; `small_model` in
-  `opencode.json` routes cheap internal tasks to a fast model.
+- **Per-agent model routing.** Agent files carry `__PLANNER_MODEL__` /
+  `__BUILDER_MODEL__` placeholders; `scripts/set-models.py` resolves them into
+  gitignored `agent.local/`, keeping the repo environment-agnostic.
 - **`task` permission.** Subagents can spawn others only where explicitly
   allowed (the coder may call the tester; everything else is denied) — a
   deny-by-default delegation graph. OpenCode has no per-agent spawn budget; to

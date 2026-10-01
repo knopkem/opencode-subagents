@@ -4,7 +4,7 @@ description: >-
   implementation plan (PLAN.md) and, if missing, a tailored project AGENTS.md.
   Writes docs only — never application code.
 mode: subagent
-model: deepseek/deepseek-flash
+model: __PLANNER_MODEL__
 temperature: 0.1
 permission:
   read: allow

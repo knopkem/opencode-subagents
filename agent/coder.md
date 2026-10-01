@@ -3,10 +3,8 @@ description: >-
   Bounded implementer. Receives ONE scoped task with fresh context and
   implements it end to end. May spawn the tester to validate its own work.
 mode: subagent
-model: opencode/big-pickle
-reasoningEffort: low
-chat_template_kwargs:
-  enable_thinking: false
+model: __BUILDER_MODEL__
+# __BUILDER_OPTIONS__
 temperature: 0.1
 permission:
   task:

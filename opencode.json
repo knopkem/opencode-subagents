@@ -1,13 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  "small_model": "anthropic/claude-haiku-4-5",
-
   "agent": {
     "orchestrator": {
       "description": "Master coordinator. Decomposes a request into independent, bounded tasks, then delegates each to a specialist subagent and integrates the results. Use proactively for any multi-step feature, migration, or audit.",
       "mode": "primary",
-      "model": "anthropic/claude-opus-4-8",
       "temperature": 0.1,
       "permission": {
         "read": "deny",
@@ -32,7 +29,6 @@
     "explorer": {
       "description": "Fast, read-only codebase mapper. Finds where things live and how patterns are used, and returns a concise summary — never edits. Use proactively before any implementation to gather context cheaply.",
       "mode": "subagent",
-      "model": "anthropic/claude-haiku-4-5",
       "temperature": 0.1,
       "permission": { "edit": "deny" }
     },
@@ -40,7 +36,6 @@
     "planner": {
       "description": "Solution architect. Turns the request plus an explorer summary into a concise implementation plan (PLAN.md) and, if missing, a tailored project AGENTS.md. Writes docs only — never application code.",
       "mode": "subagent",
-      "model": "anthropic/claude-opus-4-8",
       "temperature": 0.1,
       "permission": {
         "read": "allow",
@@ -59,7 +54,6 @@
     "coder": {
       "description": "Bounded implementer. Receives ONE scoped task with fresh context and implements it end to end. May spawn the tester to validate its own work (gated by task permission below).",
       "mode": "subagent",
-      "model": "anthropic/claude-sonnet-4-6",
       "temperature": 0.1,
       "permission": {
         "task": {
@@ -72,7 +66,6 @@
     "reviewer": {
       "description": "Independent code reviewer. Reads a diff and judges spec-compliance first, then code quality. Read-only — it reports findings, it does not fix. Run as the second stage of review after the coder finishes.",
       "mode": "subagent",
-      "model": "anthropic/claude-sonnet-4-6",
       "temperature": 0.1,
       "permission": { "edit": "deny" }
     },
@@ -80,7 +73,6 @@
     "tester": {
       "description": "Test author and runner. Writes/updates tests for a change and runs the suite, returning pass/fail plus failures. Invoked by the coder or the orchestrator.",
       "mode": "subagent",
-      "model": "anthropic/claude-haiku-4-5",
       "temperature": 0.1
     }
   }

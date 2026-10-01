@@ -3,10 +3,8 @@ description: >-
   Test author and runner. Writes/updates tests for a change and runs the suite,
   returning pass/fail plus failures. Invoked by the coder or the orchestrator.
 mode: subagent
-model: opencode/big-pickle
-reasoningEffort: low
-chat_template_kwargs:
-  enable_thinking: false
+model: __BUILDER_MODEL__
+# __BUILDER_OPTIONS__
 temperature: 0.1
 ---
 

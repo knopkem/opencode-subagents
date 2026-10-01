@@ -4,7 +4,7 @@ description: >-
   delegates each to a specialist subagent, and integrates the results.
   Use proactively for any multi-step feature, migration, or audit.
 mode: primary
-model: deepseek/deepseek-flash
+model: __PLANNER_MODEL__
 temperature: 0.1
 permission:
   read: deny

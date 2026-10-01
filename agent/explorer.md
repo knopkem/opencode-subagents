@@ -4,10 +4,8 @@ description: >-
   are used, then returns a concise summary. Never edits. Use proactively
   before any implementation to gather context cheaply.
 mode: subagent
-model: opencode/big-pickle
-reasoningEffort: low
-chat_template_kwargs:
-  enable_thinking: false
+model: __BUILDER_MODEL__
+# __BUILDER_OPTIONS__
 temperature: 0.1
 permission:
   edit: deny

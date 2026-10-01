@@ -1,81 +1,54 @@
 # Installing
 
-Two ways. The **adaptive install** is recommended because it fixes the one thing
-that can't be hardcoded — the model IDs — and validates against *your* installed
-OpenCode. The **manual install** is a plain copy if you'd rather not let an agent
-touch your config.
+The repo never stores model IDs — the agent files contain placeholders that are
+resolved from a gitignored local file, so your environment (and model churn)
+never leaks into git history.
 
----
+## Scripted install (recommended)
 
-## Adaptive install (recommended)
+```bash
+git clone <your-fork> opencode-subagents
+cd opencode-subagents
+./scripts/set-models.py
+```
 
-Clone the repo, open OpenCode **in the cloned directory**, and paste the prompt
-below (or run `@INSTALL.md do the adaptive install`). It is deliberately scoped
-to the four environment-specific steps and is told **not** to rewrite the parts
-that are already correct.
+The script:
 
-> **Task: install this OpenCode subagent config, adapting only what's
-> environment-specific. Do exactly these four steps and nothing more.**
->
-> **1. Copy, don't clobber.**
-> - Copy `agent/*.md`, `command/*.md`, and `opencode.json` into
->   `~/.config/opencode/` (global) — or `.opencode/` for project-only.
-> - If a file already exists, do **not** overwrite it. For `opencode.json`
->   specifically: *merge* — add the `small_model` key and the five entries under
->   `agent` into the existing file, leaving all other keys untouched. Show me the
->   merged result before writing.
->
-> **2. Fix the model IDs (the only values you may change).**
-> - The config ships placeholder IDs: `anthropic/claude-opus-4-8` (premium),
->   `anthropic/claude-sonnet-4-6` (mid), `anthropic/claude-haiku-4-5` (cheap).
-> - Determine which models are actually available in this OpenCode install (check
->   the configured providers / model picker — do **not** guess IDs).
-> - Replace the placeholders preserving the **tiering intent**: `orchestrator`
->   gets the most capable model; `coder` and `reviewer` a mid model; `explorer`,
->   `tester`, and `small_model` a fast/cheap model. If you're unsure of an exact
->   ID, ask me rather than inventing one.
->
-> **3. Validate.**
-> - Confirm OpenCode loads the config with no schema errors and that all five
->   agents are recognized.
-> - Sanity-check that `explorer` and `reviewer` are read-only (they should carry
->   `permission: { edit: deny }` and refuse to edit files).
-> - Report anything that didn't validate. Do not "fix" it by changing the agent
->   prompts or permissions — surface it to me.
->
-> **4. (Optional) Generate AGENTS.md.**
-> - If this is a real project and there's no `AGENTS.md`, draft one from the
->   actual codebase (conventions, test command, structure) using the template in
->   this repo's `AGENTS.md` as the shape. Show it to me before writing.
->
-> **Hard guardrails — do NOT:**
-> - change any agent's **system prompt / body text**,
-> - change the **`permission` graphs**, `mode`, `temperature`, or command logic,
-> - add, remove, or rename any field (e.g. don't reintroduce `task_budget` — it
->   isn't a real OpenCode field),
-> - touch any of my unrelated existing config.
-> You are adapting model IDs and placing files — not redesigning anything.
+1. lists your available models (`opencode models`) and lets you pick a
+   **planner** (strong; drives `orchestrator`, `reviewer`, `planner`) and a
+   **builder** (fast; drives `coder`, `explorer`, `tester`);
+2. saves your selection to gitignored `models.local.json`;
+3. renders the `agent/*.md` placeholders into gitignored `agent.local/`;
+4. symlinks `~/.config/opencode/agent` to `agent.local/`.
 
----
+Then expose the commands:
+
+```bash
+ln -s "$PWD/command" ~/.config/opencode/command
+```
+
+Useful flags: `--list` (print numbered models), `PLANNER BUILDER` (non-interactive),
+`--render` (re-render from the saved selection), `--think` / `--no-think`
+(builder reasoning on/off; off by default), `--no-link` (don't touch the config
+symlink).
 
 ## Manual install
 
-```bash
-# global (all projects)
-cp -r agent command opencode.json ~/.config/opencode/
+If you'd rather not run the script: copy `agent/*.md`, replace
+`__PLANNER_MODEL__`, `__BUILDER_MODEL__`, and `# __BUILDER_OPTIONS__` by hand,
+and place the result in `~/.config/opencode/agent/` (and `command/*.md` in
+`~/.config/opencode/command/`).
 
-# OR project-only
-mkdir -p .opencode && cp -r agent command opencode.json .opencode/
+## Per project
 
-# project rules: AGENTS.md goes in your PROJECT root
-cp AGENTS.md /path/to/your/project/AGENTS.md
-```
+Run `/init-agents` once inside a project: an explorer maps the codebase and the
+planner writes a short, tailored `AGENTS.md` (never overwriting an existing
+one). OpenCode injects it into every subagent, so fresh contexts stop
+reinventing your conventions.
 
-Then hand-edit the `model:` fields in `opencode.json` and `agent/*.md` to models
-you actually have access to (placeholders are `…opus-4-8` / `…sonnet-4-6` /
-`…haiku-4-5`), and fill in `AGENTS.md` with your project's real conventions.
+## Why
 
-> Why the adaptive path exists: model IDs date fast and differ per account, so
-> they're the one thing a static repo can't get right for you. Everything else —
-> the agent prompts, the permission graph, the command sequencing — is static and
-> reviewed, which is exactly why the adaptive prompt is forbidden from touching it.
+Model IDs date fast and differ per machine, so they're the one thing a static
+repo can't get right for you — everything else (agent prompts, permission graph,
+command sequencing) is static and reviewed. The script and placeholders keep
+that separation: repo = behavior, `models.local.json` = environment.

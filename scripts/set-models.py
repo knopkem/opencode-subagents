@@ -1,36 +1,48 @@
 #!/usr/bin/env python3
-"""Point the agent definitions at a planner and a builder model.
+"""Assign a planner and a builder model, render the agents, and link them.
+
+The repository only ever contains placeholders (`__PLANNER_MODEL__`,
+`__BUILDER_MODEL__`, `# __BUILDER_OPTIONS__`). Your selection is saved to
+gitignored `models.local.json` and rendered into gitignored `agent.local/`,
+which is symlinked into `~/.config/opencode/agent`.
 
 Planner  -> orchestrator.md + reviewer.md + planner.md (thinking, checking roles)
-Builder  -> coder.md + explorer.md + tester.md (the fast, no-thinking roles)
+Builder  -> coder.md + explorer.md + tester.md (fast, no-thinking by default)
 
 Usage:
     scripts/set-models.py                     interactive picker
     scripts/set-models.py --list              print numbered model list
     scripts/set-models.py PLANNER BUILDER     non-interactive
+    scripts/set-models.py --render            re-render from models.local.json
     scripts/set-models.py --think ...         builder keeps its reasoning
+    scripts/set-models.py --no-think ...      builder reasoning off (default)
     scripts/set-models.py --force ...         allow ids not in `opencode models`
-
-Builder files default to thinking disabled (reasoningEffort: low,
-chat_template_kwargs.enable_thinking: false) since the builder is the fast,
-no-reasoning worker; pass --think to drop those options.
+    scripts/set-models.py --no-link ...       don't touch ~/.config/opencode/agent
 """
 
+import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-AGENT_DIR = ROOT / "agent"
+TEMPLATE_DIR = ROOT / "agent"
+OUT_DIR = ROOT / "agent.local"
+SELECTION = ROOT / "models.local.json"
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "opencode"
+LINK = CONFIG_DIR / "agent"
+
 PLANNER_FILES = ["orchestrator.md", "reviewer.md", "planner.md"]
 BUILDER_FILES = ["coder.md", "explorer.md", "tester.md"]
+PLANNER_TOKEN = "__PLANNER_MODEL__"
+BUILDER_TOKEN = "__BUILDER_MODEL__"
+OPTIONS_MARKER = "# __BUILDER_OPTIONS__"
+BUILDER_OPTIONS = "reasoningEffort: low\nchat_template_kwargs:\n  enable_thinking: false"
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
-MODEL_LINE = re.compile(r"^model:\s*.+$", re.M)
 MODEL_ID = re.compile(r"[A-Za-z0-9_.@-]+/[^\s/]+(?:/[^\s/]+)*")
-NO_THINK_LINES = re.compile(r"^(?:reasoningEffort:.*\n|chat_template_kwargs:\n(?:[ \t]+.*\n)*)", re.M)
-NO_THINK_BLOCK = "reasoningEffort: low\nchat_template_kwargs:\n  enable_thinking: false"
 
 
 def list_models():
@@ -75,19 +87,65 @@ def prompt_choice(role, models):
             print("No match, try again.")
 
 
-def set_model(path, model, no_think=False):
-    text = path.read_text()
-    parts = text.split("---", 2)
-    if len(parts) < 3 or not MODEL_LINE.search(parts[1]):
-        sys.exit(f"error: {path}: no model: line in frontmatter")
-    fm = NO_THINK_LINES.sub("", parts[1])
-    fm = MODEL_LINE.sub(f"model: {model}", fm, count=1)
-    if no_think:
-        fm = fm.replace(f"model: {model}", f"model: {model}\n{NO_THINK_BLOCK}", 1)
-    fm = re.sub(r"\n{2,}", "\n", fm)
-    parts[1] = fm
-    path.write_text("---".join(parts))
-    print(f"  {path.relative_to(ROOT)} -> {model}{' (no thinking)' if no_think else ''}")
+def load_selection():
+    if not SELECTION.exists():
+        return None
+    try:
+        return json.loads(SELECTION.read_text())
+    except json.JSONDecodeError as e:
+        sys.exit(f"error: {SELECTION} is not valid JSON: {e}")
+
+
+def save_selection(selection):
+    SELECTION.write_text(json.dumps(selection, indent=2) + "\n")
+
+
+def render(selection, link=True):
+    OUT_DIR.mkdir(exist_ok=True)
+    written = []
+
+    def materialize(name, model):
+        text = (TEMPLATE_DIR / name).read_text()
+        if PLANNER_TOKEN not in text and BUILDER_TOKEN not in text:
+            sys.exit(f"error: {TEMPLATE_DIR / name}: no model placeholder")
+        text = text.replace(PLANNER_TOKEN, model).replace(BUILDER_TOKEN, model)
+        if name in BUILDER_FILES:
+            if OPTIONS_MARKER not in text:
+                sys.exit(f"error: {TEMPLATE_DIR / name}: no {OPTIONS_MARKER}")
+            if selection.get("builder_think"):
+                text = text.replace(OPTIONS_MARKER + "\n", "")
+            else:
+                text = text.replace(OPTIONS_MARKER, BUILDER_OPTIONS)
+        (OUT_DIR / name).write_text(text)
+        written.append(name)
+
+    for name in PLANNER_FILES:
+        materialize(name, selection["planner"])
+    for name in BUILDER_FILES:
+        materialize(name, selection["builder"])
+
+    print(f"rendered {len(written)} agents -> {OUT_DIR}")
+    for name in written:
+        role = selection["planner"] if name in PLANNER_FILES else selection["builder"]
+        print(f"  {name} -> {role}")
+
+    if link:
+        link_config()
+
+
+def link_config():
+    if LINK.is_symlink():
+        if LINK.resolve() == OUT_DIR.resolve():
+            print(f"link ok: {LINK} -> {OUT_DIR}")
+            return
+        LINK.unlink()
+    elif LINK.exists():
+        sys.exit(
+            f"error: {LINK} is a real directory, not a symlink; move it aside and re-run"
+        )
+    LINK.parent.mkdir(parents=True, exist_ok=True)
+    LINK.symlink_to(OUT_DIR)
+    print(f"linked {LINK} -> {OUT_DIR}")
 
 
 def main():
@@ -101,24 +159,42 @@ def main():
 
     force = "--force" in args
     think = "--think" in args
+    no_think = "--no-think" in args
+    render_only = "--render" in args
+    link = "--no-link" not in args
     args = [a for a in args if not a.startswith("--")]
+
+    if render_only:
+        selection = load_selection()
+        if not selection:
+            sys.exit(f"error: {SELECTION} not found; run set-models.py first")
+        if think or no_think:
+            selection["builder_think"] = bool(think and not no_think)
+            save_selection(selection)
+        render(selection, link=link)
+        return
 
     if len(args) == 2:
         planner, builder = args
         for role, model in (("planner", planner), ("builder", builder)):
             if models and model not in models and not force:
-                sys.exit(f"error: {role} model '{model}' not in `opencode models` (use --force)")
+                sys.exit(
+                    f"error: {role} model '{model}' not in `opencode models` (use --force)"
+                )
     elif not args:
         planner = prompt_choice("planner", models)
         builder = prompt_choice("builder", models)
     else:
         sys.exit(__doc__)
 
-    print(f"\nplanner: {planner}\nbuilder: {builder}\n")
-    for name in PLANNER_FILES:
-        set_model(AGENT_DIR / name, planner)
-    for name in BUILDER_FILES:
-        set_model(AGENT_DIR / name, builder, no_think=not think)
+    selection = {
+        "planner": planner,
+        "builder": builder,
+        "builder_think": think,
+    }
+    save_selection(selection)
+    print(f"saved {SELECTION}")
+    render(selection, link=link)
 
 
 if __name__ == "__main__":

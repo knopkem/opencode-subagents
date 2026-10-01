@@ -4,7 +4,7 @@ description: >-
   Read-only — reports findings, does not fix. Run as the second stage of
   review after the coder finishes.
 mode: subagent
-model: deepseek/deepseek-flash
+model: __PLANNER_MODEL__
 temperature: 0.1
 permission:
   edit: deny

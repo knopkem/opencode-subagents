@@ -8,6 +8,9 @@ needn't) be split, but you still want fresh-eyes review and verification:
 
 $ARGUMENTS
 
+You have no file or shell tools. Do not attempt reconnaissance yourself — your
+first action MUST be a `task` call. Include the target directory in every brief.
+
 1. **Implement.** Dispatch one `@coder` with a self-contained brief: the goal
    above, the relevant files, acceptance criteria, and the AGENTS.md rules.
 2. **Review (two-stage).** Pass the diff to `@reviewer` — spec-compliance first,

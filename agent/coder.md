@@ -10,8 +10,8 @@ chat_template_kwargs:
 temperature: 0.1
 permission:
   task:
-    tester: allow
     "*": deny
+    tester: allow
 ---
 
 You are the **coder**. You receive a single, self-contained task brief and

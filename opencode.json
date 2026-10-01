@@ -10,12 +10,20 @@
       "model": "anthropic/claude-opus-4-8",
       "temperature": 0.1,
       "permission": {
+        "read": "deny",
+        "glob": "deny",
+        "grep": "deny",
+        "list": "deny",
+        "edit": "deny",
+        "bash": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
         "task": {
+          "*": "deny",
           "explorer": "allow",
           "coder": "allow",
           "reviewer": "allow",
-          "tester": "allow",
-          "*": "deny"
+          "tester": "allow"
         }
       }
     },
@@ -35,8 +43,8 @@
       "temperature": 0.1,
       "permission": {
         "task": {
-          "tester": "allow",
-          "*": "deny"
+          "*": "deny",
+          "tester": "allow"
         }
       }
     },

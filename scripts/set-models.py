@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Point the agent definitions at a planner and a builder model.
 
-Planner  -> orchestrator.md + reviewer.md (the thinking, checking roles)
+Planner  -> orchestrator.md + reviewer.md + planner.md (thinking, checking roles)
 Builder  -> coder.md + explorer.md + tester.md (the fast, no-thinking roles)
 
 Usage:
@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENT_DIR = ROOT / "agent"
-PLANNER_FILES = ["orchestrator.md", "reviewer.md"]
+PLANNER_FILES = ["orchestrator.md", "reviewer.md", "planner.md"]
 BUILDER_FILES = ["coder.md", "explorer.md", "tester.md"]
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")

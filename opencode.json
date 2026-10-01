@@ -21,6 +21,7 @@
         "task": {
           "*": "deny",
           "explorer": "allow",
+          "planner": "allow",
           "coder": "allow",
           "reviewer": "allow",
           "tester": "allow"
@@ -34,6 +35,25 @@
       "model": "anthropic/claude-haiku-4-5",
       "temperature": 0.1,
       "permission": { "edit": "deny" }
+    },
+
+    "planner": {
+      "description": "Solution architect. Turns the request plus an explorer summary into a concise implementation plan (PLAN.md) and, if missing, a tailored project AGENTS.md. Writes docs only — never application code.",
+      "mode": "subagent",
+      "model": "anthropic/claude-opus-4-8",
+      "temperature": 0.1,
+      "permission": {
+        "read": "allow",
+        "edit": {
+          "*": "deny",
+          "PLAN.md": "allow",
+          "AGENTS.md": "allow",
+          "**/PLAN.md": "allow",
+          "**/AGENTS.md": "allow"
+        },
+        "bash": "deny",
+        "task": "deny"
+      }
     },
 
     "coder": {

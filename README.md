@@ -60,6 +60,10 @@ ln -s "$PWD/command" ~/.config/opencode/command
 `--no-think`, `--no-link`, `--force`. See [INSTALL.md](INSTALL.md) for the
 manual path.
 
+`bench-models.py` benchmarks prefill and decode speed of a shortlist of
+models (interactive multi-select, `-n` runs, `-j` parallel jobs, `--json`
+output) so you can pick a fast builder before running `set-models.py`.
+
 In each project, run `/init-agents` once.
 
 ## Design notes

@@ -7,7 +7,13 @@
       "mode": "primary",
       "temperature": 0.1,
       "permission": {
-        "read": "deny",
+        "read": {
+          "*": "deny",
+          "PLAN.md": "allow",
+          "AGENTS.md": "allow",
+          "**/PLAN.md": "allow",
+          "**/AGENTS.md": "allow"
+        },
         "glob": "deny",
         "grep": "deny",
         "list": "deny",

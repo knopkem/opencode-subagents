@@ -4,7 +4,7 @@ description: >-
   Read-only — reports findings, does not fix. Run as the second stage of
   review after the coder finishes.
 mode: subagent
-model: anthropic/claude-sonnet-4-6
+model: opencode/mimo-v2.6-flash-free
 temperature: 0.1
 permission:
   edit: deny

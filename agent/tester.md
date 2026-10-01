@@ -3,7 +3,10 @@ description: >-
   Test author and runner. Writes/updates tests for a change and runs the suite,
   returning pass/fail plus failures. Invoked by the coder or the orchestrator.
 mode: subagent
-model: anthropic/claude-haiku-4-5
+model: opencode/nemotron-3.5-lightning-free
+reasoningEffort: low
+chat_template_kwargs:
+  enable_thinking: false
 temperature: 0.1
 ---
 

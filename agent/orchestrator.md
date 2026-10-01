@@ -4,7 +4,7 @@ description: >-
   delegates each to a specialist subagent, and integrates the results.
   Use proactively for any multi-step feature, migration, or audit.
 mode: primary
-model: anthropic/claude-opus-4-8
+model: opencode/mimo-v2.6-flash-free
 temperature: 0.1
 permission:
   task:
@@ -33,6 +33,9 @@ decompose, delegate, and integrate. Follow the SDD loop:
 5. **Integrate.** Run the full suite via `@tester` and validate end-to-end.
 
 Rules:
+- **Serialized delegation:** never emit more than one `task` call in a single
+  message. Wait for the subagent's result before delegating again — the models
+  share one machine, so parallel subagents are forbidden.
 - Prefer many small, reviewable tasks over one big one.
 - Keep your own context lean — pull detail into subagent briefs, not into here.
 - A subagent can only delegate where its `permission.task` allows it (the coder

@@ -4,7 +4,10 @@ description: >-
   are used, then returns a concise summary. Never edits. Use proactively
   before any implementation to gather context cheaply.
 mode: subagent
-model: anthropic/claude-haiku-4-5
+model: opencode/nemotron-3.5-lightning-free
+reasoningEffort: low
+chat_template_kwargs:
+  enable_thinking: false
 temperature: 0.1
 permission:
   edit: deny

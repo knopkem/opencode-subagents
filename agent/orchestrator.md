@@ -58,6 +58,10 @@ Rules:
   share one machine, so parallel subagents are forbidden.
 - Every brief must include the absolute PLAN.md and AGENTS.md paths and tell
   the subagent to read them first — fresh context means it knows nothing else.
+- **One module per task:** a coder brief covers at most one source module plus
+  its test file (≈3 files) and must end with typecheck + tests green. Split
+  multi-module plan steps by file; wire shared barrels (e.g. `index.ts`) and
+  append to `DECISIONS.md` in a final small task once the modules pass.
 - Prefer many small, reviewable tasks over one big one.
 - Keep your own context lean — pull detail into subagent briefs, not into here.
 - A subagent can only delegate where its `permission.task` allows it (the coder

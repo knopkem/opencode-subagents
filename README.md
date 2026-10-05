@@ -1,9 +1,9 @@
 # opencode-subagents
 
 A spec-driven subagent pipeline for [OpenCode](https://opencode.ai): one strong
-planner model designs, one fast builder model implements, a separate reviewer
-verifies. The repo ships prompts and permission graphs only — model IDs stay on
-your machine.
+planner model designs, one fast builder model implements, and a tester (strong
+by default) verifies. The repo ships prompts and permission graphs only — model
+IDs stay on your machine.
 
 ## Workflow
 
@@ -32,7 +32,7 @@ Delegation is serialized on purpose: one subagent at a time.
 | `explorer` | subagent | builder | Read-only codebase mapping. |
 | `coder` | subagent | builder | Implement one bounded task; may call `tester`. |
 | `reviewer` | subagent | planner | Read-only two-stage review. |
-| `tester` | subagent | builder | Write/run tests, report results verbatim. |
+| `tester` | subagent | tester (defaults to planner) | Write/run tests, report results verbatim. |
 
 ## Commands
 
@@ -45,20 +45,33 @@ Delegation is serialized on purpose: one subagent at a time.
 | `/sdd-verify` | Full suite + end-to-end check against the plan. |
 | `/swarm <work>` | Parallel coders (cap 3) — for machines that can run them. |
 
+## Plugins
+
+- `plugins/loop-breaker.js` — aborts near-duplicate tool calls (normalized
+  repeats, identical output 3× even when interleaved, 5 consecutive edits to
+  one file) so weak builder models cannot loop indefinitely. Thresholds are
+  constants at the top of the file.
+- `plugins/serialize-task.js` — enforces serialized delegation: a `task` call
+  throws while another subagent is still running. Complements the
+  orchestrator's "never emit two task calls" rule at the plugin layer.
+
 ## Install
 
 ```bash
 git clone https://github.com/knopkem/opencode-subagents
 cd opencode-subagents
-./scripts/set-models.py                 # pick planner + builder models
+./scripts/set-models.py                 # pick planner + builder + tester models
 ln -s "$PWD/command" ~/.config/opencode/command
+mkdir -p ~/.config/opencode/plugins
+ln -sf "$PWD/plugins/"*.js ~/.config/opencode/plugins/
 ```
 
 `set-models.py` lists `opencode models`, saves the choice to gitignored
 `models.local.json`, renders `agent.local/`, and links it into
-`~/.config/opencode/agent`. Flags: `--list`, `--render`, `--think` /
-`--no-think`, `--no-link`, `--force`. See [INSTALL.md](INSTALL.md) for the
-manual path.
+`~/.config/opencode/agent`. The tester defaults to the planner model; pass a
+third id (or pick one at the prompt) to override it. Flags: `--list`,
+`--render`, `--think` / `--no-think`, `--no-link`, `--force`. See
+[INSTALL.md](INSTALL.md) for the manual path.
 
 `bench-models.py` benchmarks prefill and decode speed of a shortlist of
 models (interactive multi-select, `-n` runs, `-j` parallel jobs, `--json`
@@ -69,7 +82,10 @@ In each project, run `/init-agents` once.
 ## Design notes
 
 - **Placeholders only in git** — agent files carry `__PLANNER_MODEL__` /
-  `__BUILDER_MODEL__`; rendering happens locally into `agent.local/`.
+  `__BUILDER_MODEL__` / `__TESTER_MODEL__`; rendering happens locally into
+  `agent.local/`.
+- **Loop guards** — `doom_loop: deny` plus the loop-breaker plugin stop
+  variation loops; `steps` is only a generous backstop (120 coder / 60 tester).
 - **Fresh context** — every subagent starts blank; `PLAN.md` is the shared spec
   and every brief repeats the paths it needs.
 - **Hard permission graph** — the orchestrator can only read `PLAN.md` /

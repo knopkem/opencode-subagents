@@ -15,29 +15,39 @@ cd opencode-subagents
 The script:
 
 1. lists your available models (`opencode models`) and lets you pick a
-   **planner** (strong; drives `orchestrator`, `reviewer`, `planner`) and a
-   **builder** (fast; drives `coder`, `explorer`, `tester`);
+   **planner** (strong; drives `orchestrator`, `reviewer`, `planner`), a
+   **builder** (fast; drives `coder`, `explorer`), and a **tester**
+   (defaults to the planner model — keep verification on the stronger model);
 2. saves your selection to gitignored `models.local.json`;
 3. renders the `agent/*.md` placeholders into gitignored `agent.local/`;
 4. symlinks `~/.config/opencode/agent` to `agent.local/`.
 
-Then expose the commands:
+Then expose the commands and plugins:
 
 ```bash
 ln -s "$PWD/command" ~/.config/opencode/command
+mkdir -p ~/.config/opencode/plugins
+ln -sf "$PWD/plugins/"*.js ~/.config/opencode/plugins/
 ```
 
-Useful flags: `--list` (print numbered models), `PLANNER BUILDER` (non-interactive),
-`--render` (re-render from the saved selection), `--think` / `--no-think`
-(builder reasoning on/off; off by default), `--no-link` (don't touch the config
-symlink).
+`plugins/loop-breaker.js` aborts near-duplicate tool calls (normalized
+repeats, identical output 3× even when interleaved, 5 consecutive edits to one
+file) so weak builder models cannot loop indefinitely; thresholds are constants
+at the top of the file.
+
+Useful flags: `--list` (print numbered models), `PLANNER BUILDER [TESTER]`
+(non-interactive; tester defaults to planner), `--render` (re-render from the
+saved selection), `--think` / `--no-think` (builder reasoning on/off; off by
+default), `--no-link` (don't touch the config symlink).
 
 ## Manual install
 
 If you'd rather not run the script: copy `agent/*.md`, replace
-`__PLANNER_MODEL__`, `__BUILDER_MODEL__`, and `# __BUILDER_OPTIONS__` by hand,
-and place the result in `~/.config/opencode/agent/` (and `command/*.md` in
-`~/.config/opencode/command/`).
+`__PLANNER_MODEL__`, `__BUILDER_MODEL__`, `__TESTER_MODEL__`, and
+`# __BUILDER_OPTIONS__` by hand, and place the result in
+`~/.config/opencode/agent/` (and `command/*.md` in
+`~/.config/opencode/command/`, `plugins/*.js` in
+`~/.config/opencode/plugins/`).
 
 ## Per project
 

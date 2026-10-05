@@ -14,10 +14,11 @@ cd opencode-subagents
 
 The script:
 
-1. lists your available models (`opencode models`) and lets you pick a
-   **planner** (strong; drives `orchestrator`, `reviewer`, `planner`), a
-   **builder** (fast; drives `coder`, `explorer`), and a **tester**
-   (defaults to the planner model — keep verification on the stronger model);
+1. lists your available models (`opencode models`) and lets you pick a model
+   per role — `orchestrator`, `planner`, `reviewer`, `tester`, `builder`,
+   `explorer`. Unset roles fall back to the planner model (orchestrator,
+   reviewer, tester) or the builder model (explorer), so any subset can share a
+   model;
 2. saves your selection to gitignored `models.local.json`;
 3. renders the `agent/*.md` placeholders into gitignored `agent.local/`;
 4. symlinks `~/.config/opencode/agent` to `agent.local/`.
@@ -33,17 +34,24 @@ ln -sf "$PWD/plugins/"*.js ~/.config/opencode/plugins/
 `plugins/loop-breaker.js` aborts near-duplicate tool calls (normalized
 repeats, identical output 3× even when interleaved, 5 consecutive edits to one
 file) so weak builder models cannot loop indefinitely; thresholds are constants
-at the top of the file.
+at the top of the file. `plugins/compaction-ledger.js` keeps PLAN.md, AGENTS.md,
+DECISIONS.md and INTEGRATION.md in compaction summaries so a resumed coder
+session re-reads its durable memory instead of trusting a lossy summary.
 
-Useful flags: `--list` (print numbered models), `PLANNER BUILDER [TESTER]`
-(non-interactive; tester defaults to planner), `--render` (re-render from the
-saved selection), `--think` / `--no-think` (builder reasoning on/off; off by
-default), `--no-link` (don't touch the config symlink).
+Useful flags: `--list` (print numbered models), `--render` (re-render from the
+saved selection), role flags `--orchestrator M --planner M --reviewer M
+--tester M --builder M --explorer M` (any subset; unset roles keep their saved
+value or fall back to planner/builder), `PLANNER BUILDER [TESTER]` (legacy
+shorthand), `--think` / `--no-think` (builder reasoning on/off; off by
+default), `--sessions persistent|fresh` (one resumable coder session per phase
+— the default — or a fresh coder per task), `--no-link` (don't touch the config
+symlink).
 
 ## Manual install
 
 If you'd rather not run the script: copy `agent/*.md`, replace
-`__PLANNER_MODEL__`, `__BUILDER_MODEL__`, `__TESTER_MODEL__`, and
+`__ORCHESTRATOR_MODEL__`, `__PLANNER_MODEL__`, `__REVIEWER_MODEL__`,
+`__TESTER_MODEL__`, `__BUILDER_MODEL__`, `__EXPLORER_MODEL__`, and
 `# __BUILDER_OPTIONS__` by hand, and place the result in
 `~/.config/opencode/agent/` (and `command/*.md` in
 `~/.config/opencode/command/`, `plugins/*.js` in
@@ -51,8 +59,15 @@ If you'd rather not run the script: copy `agent/*.md`, replace
 
 ## Per project
 
-Run `/init-agents` once inside a project: an explorer maps the codebase and the
-planner writes a short, tailored `AGENTS.md` (never overwriting an existing
+Start a brand-new project with `scripts/new-project.sh <dir>`: it creates the
+directory, runs `git init`, and starts OpenCode there. That anchor matters — OpenCode resolves the project at the nearest
+`.git`/`package.json` upward, and an empty directory has none, so the parent
+workspace (and every sibling project) becomes the project root and `**` globs
+escape the target. For an existing project, make sure its own root is the
+nearest anchor (e.g. `git init` if it has none) before starting.
+
+Then run `/init-agents` once inside a project: an explorer maps the codebase and
+the planner writes a short, tailored `AGENTS.md` (never overwriting an existing
 one). OpenCode injects it into every subagent, so fresh contexts stop
 reinventing your conventions.
 

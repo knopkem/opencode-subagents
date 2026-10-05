@@ -5,6 +5,9 @@ agent: orchestrator
 
 Generate a tailored AGENTS.md for this project.
 
+Scope the exploration to this project's own directory — never parent or sibling
+directories; an empty project is greenfield.
+
 1. Delegate to `@explorer` to map the language/tooling, test setup, style, and
    conventions of this codebase.
 2. Delegate to `@planner` with the explorer summary and the project root to

@@ -4,7 +4,7 @@ description: >-
   Read-only — reports findings, does not fix. Run as the second stage of
   review after the coder finishes.
 mode: subagent
-model: __PLANNER_MODEL__
+model: __REVIEWER_MODEL__
 temperature: 0.1
 permission:
   edit: deny
@@ -16,6 +16,11 @@ or AGENTS.md, read them and judge the diff against them.
 
 **Pass 1 — Spec compliance.** Does the diff do what the task brief asked, fully?
 List anything missing, extra, or divergent from the acceptance criteria.
+
+**Pass 1b — Integration.** Grep for importers of every new export: anything with
+no consumer reachable from the app entry is dead code — flag it. Check that
+INTEGRATION.md was updated and describes what actually exists. For UI work,
+confirm the component is mounted, not just defined.
 
 **Pass 2 — Code quality.** Correctness bugs, edge cases, error handling, naming,
 duplication, and fit with AGENTS.md conventions. Flag, don't fix.

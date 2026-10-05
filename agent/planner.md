@@ -23,17 +23,28 @@ explorer's summary, and the project root, produce two documents.
 
 **PLAN.md** (always) — short and concrete:
 - Goal and non-goals.
-- File map: files to create or modify.
+- File map: files to create or modify; the scaffold step owns a
+  toolchain-appropriate `.gitignore`.
 - Interfaces: types, functions, classes with signatures and one-line contracts.
-- Implementation order: small, independently reviewable steps.
+- Implementation order: phases grouped by integration seam (e.g. pure core /
+  state + UI / app wiring), each phase a list of small, independently
+  reviewable steps and ending with an end-to-end check (feature reachable from
+  the app entry, not just green unit tests).
 - Acceptance criteria and test plan, with exact commands where known.
+- Artifacts: PLAN.md (this contract), DECISIONS.md (append-only log), and
+  INTEGRATION.md (module → exports → consumers, maintained by the coder).
 
 **AGENTS.md** (only when the project has none) — a short, factual conventions
-file: language and tooling, build/test commands, style rules, and the
-delegation norms the orchestrator relies on. Use only what the explorer found
-or the request states; never invent conventions.
+file: language and tooling, build/test commands, style rules, and the habit of
+keeping INTEGRATION.md current. Use only what the explorer found or the request
+states; never invent conventions. For a greenfield project, omit delegation
+norms — the orchestrator brings its own.
 
 Rules:
+- Work only inside the target project root. Never read, glob, grep, or list
+  parent or sibling directories, and never copy conventions from another
+  project — a greenfield project gets its conventions from the request and the
+  explorer's findings.
 - Write no application code — only PLAN.md and AGENTS.md.
 - Keep both files compact; subagents pay for every token they read.
 - Never overwrite an existing AGENTS.md.

@@ -1,22 +1,39 @@
 #!/usr/bin/env python3
-"""Assign planner, builder, and tester models, render the agents, and link them.
+"""Assign a model per role, render the agents, and link them.
 
-The repository only ever contains placeholders (`__PLANNER_MODEL__`,
-`__BUILDER_MODEL__`, `__TESTER_MODEL__`, `# __BUILDER_OPTIONS__`). Your
-selection is saved to gitignored `models.local.json` and rendered into
-gitignored `agent.local/`, which is symlinked into `~/.config/opencode/agent`.
+The repository only ever contains placeholders (`__ORCHESTRATOR_MODEL__`,
+`__PLANNER_MODEL__`, `__REVIEWER_MODEL__`, `__TESTER_MODEL__`,
+`__BUILDER_MODEL__`, `__EXPLORER_MODEL__`, `# __BUILDER_OPTIONS__`) and choice
+blocks (`# __IF sessions|review|test ...__`). Your selection is saved to
+gitignored `models.local.json` and rendered into gitignored `agent.local/`,
+which is symlinked into `~/.config/opencode/agent`. The `review`/`test` blocks
+resolve by comparing model providers, so the orchestrator prompt states exactly
+which overlaps the current split permits.
 
-Planner -> orchestrator.md + reviewer.md + planner.md (thinking, checking roles)
-Builder -> coder.md + explorer.md (fast, no-thinking by default)
-Tester  -> tester.md (defaults to the planner model; strong, verifying role)
+Every role is chosen independently, so you can give several roles (or all) the
+same model to collapse them. Defaults for unspecified roles:
+orchestrator/reviewer/tester -> planner, explorer -> builder.
+
+Roles:
+    orchestrator -> orchestrator.md
+    planner      -> planner.md
+    reviewer     -> reviewer.md
+    tester       -> tester.md
+    builder      -> coder.md
+    explorer     -> explorer.md
 
 Usage:
-    scripts/set-models.py                          interactive picker
+    scripts/set-models.py                          interactive picker (all roles)
     scripts/set-models.py --list                   print numbered model list
-    scripts/set-models.py PLANNER BUILDER [TESTER] non-interactive
+    scripts/set-models.py PLANNER BUILDER [TESTER] legacy shorthand
+    scripts/set-models.py --orchestrator M --reviewer M ...
+                                                   any subset of role flags
+                                                   (--planner M --builder M ...)
     scripts/set-models.py --render                 re-render from models.local.json
     scripts/set-models.py --think ...              builder keeps its reasoning
     scripts/set-models.py --no-think ...           builder reasoning off (default)
+    scripts/set-models.py --sessions persistent    one resumable coder session per phase (default)
+    scripts/set-models.py --sessions fresh         a fresh coder session per task
     scripts/set-models.py --force ...              allow ids not in `opencode models`
     scripts/set-models.py --no-link ...            don't touch ~/.config/opencode/agent
 """
@@ -35,15 +52,31 @@ SELECTION = ROOT / "models.local.json"
 CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "opencode"
 LINK = CONFIG_DIR / "agent"
 
-PLANNER_FILES = ["orchestrator.md", "reviewer.md", "planner.md"]
-BUILDER_FILES = ["coder.md", "explorer.md"]
-TESTER_FILES = ["tester.md"]
-PLANNER_TOKEN = "__PLANNER_MODEL__"
-BUILDER_TOKEN = "__BUILDER_MODEL__"
-TESTER_TOKEN = "__TESTER_MODEL__"
+ROLES = ["orchestrator", "planner", "reviewer", "tester", "builder", "explorer"]
+ROLE_FILES = {
+    "orchestrator": "orchestrator.md",
+    "planner": "planner.md",
+    "reviewer": "reviewer.md",
+    "tester": "tester.md",
+    "builder": "coder.md",
+    "explorer": "explorer.md",
+}
+ROLE_TOKENS = {role: f"__{role.upper()}_MODEL__" for role in ROLES}
+ROLE_FLAGS = {f"--{role}": role for role in ROLES}
+ROLE_DEFAULTS = {
+    "orchestrator": "planner",
+    "reviewer": "planner",
+    "tester": "planner",
+    "explorer": "builder",
+}
 MODEL_TOKEN = re.compile(r"__[A-Z]+_MODEL__")
 OPTIONS_MARKER = "# __BUILDER_OPTIONS__"
 BUILDER_OPTIONS = "reasoningEffort: low\nchat_template_kwargs:\n  enable_thinking: false"
+SESSION_MODES = ("persistent", "fresh")
+CHOICE_BLOCK = re.compile(
+    r"^# __IF (\w+) (\w+)__\n(.*?)^# __ENDIF__\n",
+    re.DOTALL | re.MULTILINE,
+)
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 MODEL_ID = re.compile(r"[A-Za-z0-9_.@-]+/[^\s/]+(?:/[^\s/]+)*")
@@ -68,10 +101,26 @@ def list_models():
     return models
 
 
-def prompt_choice(role, models, default=None):
+def prompt_sessions(default="persistent"):
+    while True:
+        ans = input(f"\nSession mode [persistent/fresh] (Enter = {default}): ")
+        ans = ans.strip().lower()
+        if not ans:
+            return default
+        if ans in ("p", "persistent"):
+            return "persistent"
+        if ans in ("f", "fresh"):
+            return "fresh"
+        print("Enter 'persistent' or 'fresh'.")
+
+
+def print_models(models):
     print("\nAvailable models:\n")
     for i, m in enumerate(models, 1):
         print(f"  {i:>3}) {m}")
+
+
+def prompt_choice(role, models, default=None):
     hint = f", Enter = {default}" if default else ""
     while True:
         ans = input(
@@ -96,6 +145,45 @@ def prompt_choice(role, models, default=None):
             print("No match, try again.")
 
 
+def provider_of(model):
+    return model.split("/", 1)[0]
+
+
+def apply_choices(text, choices):
+    def replace(match):
+        key, value, body = match.group(1), match.group(2), match.group(3)
+        if key not in choices:
+            return match.group(0)
+        return body if value == choices[key] else ""
+
+    return CHOICE_BLOCK.sub(replace, text)
+
+
+def session_mode(selection):
+    mode = selection.get("sessions") or SESSION_MODES[0]
+    if mode not in SESSION_MODES:
+        sys.exit(f"error: sessions must be one of {', '.join(SESSION_MODES)}")
+    return mode
+
+
+def resolve_roles(selection):
+    roles = {role: selection.get(role) for role in ROLES}
+    for role, source in ROLE_DEFAULTS.items():
+        if not roles.get(role):
+            roles[role] = roles.get(source)
+    return roles
+
+
+def render_choices(selection):
+    roles = resolve_roles(selection)
+    builder = roles["builder"]
+    return {
+        "sessions": session_mode(selection),
+        "review": "parallel" if provider_of(roles["reviewer"]) != provider_of(builder) else "serial",
+        "test": "parallel" if provider_of(roles["tester"]) != provider_of(builder) else "serial",
+    }
+
+
 def load_selection():
     if not SELECTION.exists():
         return None
@@ -110,33 +198,36 @@ def save_selection(selection):
 
 
 def render_plan(selection):
-    tester = selection.get("tester") or selection["planner"]
-    return [
-        ("orchestrator.md", selection["planner"], PLANNER_TOKEN, False),
-        ("reviewer.md", selection["planner"], PLANNER_TOKEN, False),
-        ("planner.md", selection["planner"], PLANNER_TOKEN, False),
-        ("coder.md", selection["builder"], BUILDER_TOKEN, True),
-        ("explorer.md", selection["builder"], BUILDER_TOKEN, True),
-        ("tester.md", tester, TESTER_TOKEN, False),
-    ]
+    roles = resolve_roles(selection)
+    plan = []
+    for role in ROLES:
+        builder_options = role == "builder" or (role == "explorer" and roles[role] == roles["builder"])
+        plan.append((ROLE_FILES[role], roles[role], ROLE_TOKENS[role], builder_options))
+    return plan
 
 
 def render(selection, link=True):
     OUT_DIR.mkdir(exist_ok=True)
     written = []
+    choices = render_choices(selection)
 
     def materialize(name, model, token, builder_options):
         text = (TEMPLATE_DIR / name).read_text()
         if not MODEL_TOKEN.search(text):
             sys.exit(f"error: {TEMPLATE_DIR / name}: no model placeholder")
+        text = apply_choices(text, choices)
+        if "__IF " in text or "__ENDIF__" in text:
+            sys.exit(f"error: {TEMPLATE_DIR / name}: unresolved choice marker")
         text = text.replace(token, model)
-        if builder_options:
-            if OPTIONS_MARKER not in text:
-                sys.exit(f"error: {TEMPLATE_DIR / name}: no {OPTIONS_MARKER}")
-            if selection.get("builder_think"):
-                text = text.replace(OPTIONS_MARKER + "\n", "")
-            else:
+        if MODEL_TOKEN.search(text):
+            sys.exit(f"error: {TEMPLATE_DIR / name}: unresolved model placeholder")
+        if OPTIONS_MARKER in text:
+            if builder_options and not selection.get("builder_think"):
                 text = text.replace(OPTIONS_MARKER, BUILDER_OPTIONS)
+            else:
+                text = text.replace(OPTIONS_MARKER + "\n", "")
+        elif builder_options:
+            sys.exit(f"error: {TEMPLATE_DIR / name}: no {OPTIONS_MARKER}")
         (OUT_DIR / name).write_text(text)
         written.append((name, model))
 
@@ -144,6 +235,7 @@ def render(selection, link=True):
         materialize(name, model, token, builder_options)
 
     print(f"rendered {len(written)} agents -> {OUT_DIR}")
+    print(f"sessions: {session_mode(selection)}")
     for name, model in written:
         print(f"  {name} -> {model}")
 
@@ -166,6 +258,44 @@ def link_config():
     print(f"linked {LINK} -> {OUT_DIR}")
 
 
+def parse_args(argv):
+    sessions = None
+    role_flags = {}
+    positional = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--sessions":
+            if i + 1 >= len(argv):
+                sys.exit("error: --sessions needs a value (persistent|fresh)")
+            sessions = argv[i + 1]
+            if sessions not in SESSION_MODES:
+                sys.exit(f"error: --sessions must be one of {', '.join(SESSION_MODES)}")
+            i += 2
+            continue
+        if arg in ROLE_FLAGS:
+            if i + 1 >= len(argv):
+                sys.exit(f"error: {arg} needs a model value")
+            role_flags[ROLE_FLAGS[arg]] = argv[i + 1]
+            i += 2
+            continue
+        if arg.startswith("--"):
+            i += 1
+            continue
+        positional.append(arg)
+        i += 1
+    return sessions, role_flags, positional
+
+
+def validate(selection, models, force):
+    if not models or force:
+        return
+    for role in ROLES:
+        model = selection.get(role)
+        if model and model not in models:
+            sys.exit(f"error: {role} model '{model}' not in `opencode models` (use --force)")
+
+
 def main():
     args = sys.argv[1:]
     models = list_models()
@@ -180,43 +310,72 @@ def main():
     no_think = "--no-think" in args
     render_only = "--render" in args
     link = "--no-link" not in args
-    args = [a for a in args if not a.startswith("--")]
+    sessions, role_flags, positional = parse_args(args)
 
     if render_only:
         selection = load_selection()
         if not selection:
             sys.exit(f"error: {SELECTION} not found; run set-models.py first")
+        changed = False
         if think or no_think:
             selection["builder_think"] = bool(think and not no_think)
+            changed = True
+        if sessions:
+            selection["sessions"] = sessions
+            changed = True
+        if changed:
             save_selection(selection)
         render(selection, link=link)
         return
 
-    if len(args) in (2, 3):
-        planner, builder = args[0], args[1]
-        tester = args[2] if len(args) == 3 else planner
-        for role, model in (
-            ("planner", planner),
-            ("builder", builder),
-            ("tester", tester),
-        ):
-            if models and model not in models and not force:
-                sys.exit(
-                    f"error: {role} model '{model}' not in `opencode models` (use --force)"
-                )
-    elif not args:
+    selection = load_selection() or {}
+
+    if positional:
+        if len(positional) not in (2, 3):
+            sys.exit(__doc__)
+        selection["planner"] = positional[0]
+        selection["builder"] = positional[1]
+        if len(positional) == 3:
+            selection["tester"] = positional[2]
+    selection.update(role_flags)
+
+    if not args:
+        print_models(models)
         planner = prompt_choice("planner", models)
         builder = prompt_choice("builder", models)
-        tester = prompt_choice("tester", models, default=planner)
+        selection.update(
+            {
+                "planner": planner,
+                "builder": builder,
+                "orchestrator": prompt_choice("orchestrator", models, default=planner),
+                "reviewer": prompt_choice("reviewer", models, default=planner),
+                "tester": prompt_choice("tester", models, default=planner),
+                "explorer": prompt_choice("explorer", models, default=builder),
+            }
+        )
+        if not sessions:
+            sessions = prompt_sessions()
     else:
-        sys.exit(__doc__)
+        if not selection.get("planner"):
+            print_models(models)
+            selection["planner"] = prompt_choice("planner", models)
+        if not selection.get("builder"):
+            selection["builder"] = prompt_choice("builder", models)
 
-    selection = {
-        "planner": planner,
-        "builder": builder,
-        "tester": tester,
-        "builder_think": think,
-    }
+    roles = resolve_roles(selection)
+    for role in ("planner", "builder"):
+        if not roles[role]:
+            sys.exit(f"error: {role} model is required")
+    selection.update({role: roles[role] for role in ROLES})
+
+    selection["sessions"] = sessions or selection.get("sessions") or SESSION_MODES[0]
+    if think or no_think:
+        selection["builder_think"] = bool(think and not no_think)
+    else:
+        selection.setdefault("builder_think", False)
+
+    validate(selection, models, force)
+
     save_selection(selection)
     print(f"saved {SELECTION}")
     render(selection, link=link)

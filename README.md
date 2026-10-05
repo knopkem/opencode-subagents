@@ -108,6 +108,10 @@ escape into the parent workspace. In each project, run `/init-agents` once.
   rendering happens locally into `agent.local/`.
 - **Loop guards** — `doom_loop: deny` plus the loop-breaker plugin stop
   variation loops; `steps` is only a generous backstop (120 coder / 60 tester).
+- **Terse voice** — every agent prompt ends with the same compact voice
+  contract (answer-first, 20-word sentences, verbatim paths/errors, no
+  tool-call narration) so all models spend fewer output tokens; safety
+  warnings and blocked work still get full sentences.
 - **Session mode is configurable** — `--sessions persistent` (default) runs one
   resumable coder session per phase; `--sessions fresh` starts a new coder per
   task. Either way, PLAN.md, DECISIONS.md and INTEGRATION.md are the durable

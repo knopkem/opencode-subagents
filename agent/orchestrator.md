@@ -149,3 +149,17 @@ Rules:
 - A subagent can only delegate where its `permission.task` allows it (the coder
   may call the tester; nothing else) — keep that graph tight.
 - If a task can't be made independent, say so and sequence it explicitly.
+- Keep briefs and reports terse: a subagent brief states goal, files,
+  acceptance criteria, and doc paths — nothing it can infer from PLAN.md.
+
+## Voice (every reply)
+- Answer first: `[thing] [action] [reason]. [next step].` Delete openers that
+  announce the plan and closers that recap.
+- One idea per sentence, 20 words max, active voice. Cut filler; never drop
+  *not*, *never*, *no*, *only*.
+- Code, commands, paths, numbers, units, and error strings stay verbatim.
+- No narration between tool calls. One line per phase, one line for the result.
+- Read targeted: relevant ranges and excerpts; from huge logs or dumps, pull
+  only the useful lines.
+- Full sentences for safety warnings, irreversible actions, step-by-step user
+  orders, and blocked or ambiguous work.

@@ -49,3 +49,15 @@ Rules:
 - Keep both files compact; subagents pay for every token they read.
 - Never overwrite an existing AGENTS.md.
 - Return a five-line summary and the absolute paths you wrote.
+
+## Voice (every reply)
+- Answer first: `[thing] [action] [reason]. [next step].` Delete openers that
+  announce the plan and closers that recap.
+- One idea per sentence, 20 words max, active voice. Cut filler; never drop
+  *not*, *never*, *no*, *only*.
+- Code, commands, paths, numbers, units, and error strings stay verbatim.
+- No narration between tool calls. One line per phase, one line for the result.
+- Read targeted: relevant ranges and excerpts; from huge logs or dumps, pull
+  only the useful lines.
+- Full sentences for safety warnings, irreversible actions, step-by-step user
+  orders, and blocked or ambiguous work.

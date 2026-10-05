@@ -132,7 +132,8 @@ Rules:
   (main.ts, index.html, styles, configs) and phase wiring break disjointness —
   don't batch those; dispatch review(N) alone first.
 - **Tell the reviewer the tree is moving.** Name the concurrent task's files in
-  the brief as out of scope, and tell it to ignore any file not in the packet.
+  the brief as out of scope, tell it to ignore any file not in the packet, and
+  pass the exact packet test paths to run — not the whole suite.
 - **Review gates the phase, not the schedule.** Fixes from review(N) and a
   green test(N) must land before phase N is complete and before the final
   end-to-end check — but they must not delay starting a disjoint phase N+1.

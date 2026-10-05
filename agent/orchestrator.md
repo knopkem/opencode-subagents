@@ -62,8 +62,9 @@ to `@explorer`. Never try to inspect the codebase yourself. Follow the SDD loop:
    starts with **zero context** from other tasks — put everything it needs in
    the brief; the plan and the ledger files are the only shared memory.
 # __ENDIF__
-5. **Review (two-stage).** Dispatch `@reviewer` only after the coder reports the
-   brief's gates green (typecheck, tests, build). Its brief is the **packet**:
+5. **Review (two-stage).** Every task gets its own review. Dispatch `@reviewer`
+   only after the coder reports the brief's gates green (typecheck, tests,
+   build). Its brief is the **packet**:
    changed files, acceptance criteria, PLAN.md § refs, gate output, and the
    coder's ledger deltas — the reviewer starts there and opens only files the
    packet does not cover. Review is spec-compliance against PLAN.md and the
@@ -121,6 +122,10 @@ Rules:
   Review never overlaps coding in this setup (same provider), so accept the
   serial flow: a lone review call parks you until it returns.
 # __ENDIF__
+- **Every coder task gets its own review.** When you dispatch coder(N+1), pair
+  review(N) in the same message; if no disjoint next task exists, dispatch
+  review(N) alone. Reviews may lag coding by one task; they never skip one. A
+  phase-end audit is additional, never a substitute.
 - **Review gates the phase, not the schedule.** Fixes from review(N) and a
   green test(N) must land before phase N is complete and before the final
   end-to-end check — but they must not delay starting a disjoint phase N+1.

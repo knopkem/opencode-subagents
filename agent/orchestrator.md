@@ -126,6 +126,13 @@ Rules:
   review(N) in the same message; if no disjoint next task exists, dispatch
   review(N) alone. Reviews may lag coding by one task; they never skip one. A
   phase-end audit is additional, never a substitute.
+- **Disjoint means code, not ledgers.** Batch review(N) ∥ coding(N+1) only when
+  N+1's brief file list does not intersect N's packet list, ignoring
+  DECISIONS.md and INTEGRATION.md (append-only, never code). Shared shell files
+  (main.ts, index.html, styles, configs) and phase wiring break disjointness —
+  don't batch those; dispatch review(N) alone first.
+- **Tell the reviewer the tree is moving.** Name the concurrent task's files in
+  the brief as out of scope, and tell it to ignore any file not in the packet.
 - **Review gates the phase, not the schedule.** Fixes from review(N) and a
   green test(N) must land before phase N is complete and before the final
   end-to-end check — but they must not delay starting a disjoint phase N+1.

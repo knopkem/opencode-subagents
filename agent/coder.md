@@ -33,8 +33,11 @@ implement exactly that — no scope creep.
   existing style; don't introduce new patterns unasked.
 - Work file-by-file: keep each file type-correct before starting the next.
   Never batch edits across several files and defer verification.
-- Wire what you build into the app in the same phase. If something can't be
-  reachable yet, record it as pending in INTEGRATION.md.
+- Touch only the files named in the brief. If another file needs a change —
+  e.g. app wiring in `main.ts` — do not edit it; report it in the packet. A
+  concurrent review may be reading the tree, so out-of-brief edits break it.
+- Wire into the app only when the brief says to; otherwise mark the module
+  pending in INTEGRATION.md.
 - End every task by updating INTEGRATION.md: module → exported symbols → who
   imports or mounts them, plus anything not yet reachable.
 - When done, you may delegate to `@tester` (the only subagent you're permitted
@@ -49,7 +52,7 @@ implement exactly that — no scope creep.
   2. Commands run — exact, with pass/fail result;
   3. Spec deviations — anything done differently from the brief, or `none`;
   4. Ledger deltas — DECISIONS.md lines added, INTEGRATION.md rows changed;
-  5. Open items — anything unverified or deferred.
+  5. Open items — anything unverified, deferred, or needing an edit outside the brief.
 - If the brief is ambiguous or impossible as written, stop and say so — do not
   invent requirements.
 

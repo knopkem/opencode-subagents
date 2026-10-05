@@ -20,8 +20,11 @@ Explore → Plan → Decompose → Dispatch → Review → Integrate
 4. **Dispatch** — phase-persistent by default (later tasks resume the phase's
    coder session via `task_id`) or a fresh coder per task with `--sessions
    fresh`. Briefs point at `PLAN.md` / `AGENTS.md` / `INTEGRATION.md`.
-5. **Review** — `reviewer` checks spec-compliance, reachability (no dead code),
-   then quality; fixes go back to the same session.
+5. **Review** — after gates are green, `reviewer` starts from the coder's
+   handoff packet and checks spec-compliance, reachability (no dead code), then
+   quality; tests get a presence check only (quality is `tester`'s job). One
+   resumable reviewer session per phase; fixes go back to the coder session,
+   queued behind any in-flight task.
 6. **Integrate** — `tester` runs the suite and reports raw results.
 
 Delegation is serialized per model: one task per provider at a time. On
@@ -39,7 +42,7 @@ rejects same-model tasks. Two coders can never run in parallel.
 | `planner` | subagent | own role | Write `PLAN.md` and `AGENTS.md`. Docs only. |
 | `explorer` | subagent | own role (default: builder) | Read-only codebase mapping. |
 | `coder` | subagent | own role | Implement bounded tasks within one phase's session; may call `tester`. |
-| `reviewer` | subagent | own role (default: planner) | Read-only two-stage review. |
+| `reviewer` | subagent | own role (default: planner) | Read-only two-stage review; packet-first, tests presence-checked only. |
 | `tester` | subagent | own role (default: planner) | Write/run tests, report results verbatim. |
 
 ## Commands
@@ -107,7 +110,8 @@ escape into the parent workspace. In each project, run `/init-agents` once.
   placeholders (orchestrator, planner, reviewer, tester, builder, explorer);
   rendering happens locally into `agent.local/`.
 - **Loop guards** — `doom_loop: deny` plus the loop-breaker plugin stop
-  variation loops; `steps` is only a generous backstop (120 coder / 60 tester).
+  variation loops; `steps` is only a generous backstop (120 coder / 80 reviewer
+  / 60 tester).
 - **Terse voice** — every agent prompt ends with the same compact voice
   contract (answer-first, 20-word sentences, verbatim paths/errors, no
   tool-call narration) so all models spend fewer output tokens; safety

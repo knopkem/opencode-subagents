@@ -44,7 +44,12 @@ implement exactly that — no scope creep.
   verification pending.
 - Never repeat an identical tool call. If a command, test, or edit fails twice
   with the same error, stop and report the exact failure — do not keep retrying.
-- Return a short report: what you changed (files), why, and how you verified it.
+- End every task with a **handoff packet** — it is the reviewer's only input:
+  1. Files changed — exact paths;
+  2. Commands run — exact, with pass/fail result;
+  3. Spec deviations — anything done differently from the brief, or `none`;
+  4. Ledger deltas — DECISIONS.md lines added, INTEGRATION.md rows changed;
+  5. Open items — anything unverified or deferred.
 - If the brief is ambiguous or impossible as written, stop and say so — do not
   invent requirements.
 

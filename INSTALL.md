@@ -37,6 +37,12 @@ file) so weak builder models cannot loop indefinitely; thresholds are constants
 at the top of the file. `plugins/compaction-ledger.js` keeps PLAN.md, AGENTS.md,
 DECISIONS.md and INTEGRATION.md in compaction summaries so a resumed coder
 session re-reads its durable memory instead of trusting a lossy summary.
+`plugins/process-gate.js` enforces the pipeline's review/coverage rules; run the
+first real project with `PROCESS_GATE=warn` (or
+`.orchestration/config.json` `{"mode":"warn"}`) and inspect
+`.orchestration/violations.log` before switching to the default `enforce`.
+Regression fixtures live in `plugins/tests/` and run with `npm test` (host Node
+only; targets stay stack-free).
 
 Useful flags: `--list` (print numbered models), `--render` (re-render from the
 saved selection), role flags `--orchestrator M --planner M --reviewer M

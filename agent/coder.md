@@ -36,10 +36,21 @@ implement exactly that — no scope creep.
 - Touch only the files named in the brief. If another file needs a change —
   e.g. app wiring in `main.ts` — do not edit it; report it in the packet. A
   concurrent review may be reading the tree, so out-of-brief edits break it.
+- **The plan outranks the brief.** Before editing, check every work item the
+  brief cites against PLAN.md. If the brief omits or contradicts a plan item
+  in scope, STOP and report the conflict with the exact PLAN.md line — never
+  silently comply, never silently deviate. Never edit PLAN.md.
 - Wire into the app only when the brief says to; otherwise mark the module
   pending in INTEGRATION.md.
 - End every task by updating INTEGRATION.md: module → exported symbols → who
   imports or mounts them, plus anything not yet reachable.
+- Run the project's declared `VERIFY:` command (AGENTS.md) before the handoff
+  packet; quote its `.orchestration/verify.json` result. Unit tests alone are
+  not a handoff gate.
+- Commit once per completed task, after gates are green, staging only the
+  brief's files plus DECISIONS.md/INTEGRATION.md:
+  `git commit -m "P<phase>.<n>: <summary>"` (list several IDs when the task
+  covers several work items). Do not commit on a failed task.
 - When done, you may delegate to `@tester` (the only subagent you're permitted
   to call) to confirm the change works. Fix what comes back.
 - If `@tester` is blocked (its model is busy with a review), do not
@@ -47,12 +58,17 @@ implement exactly that — no scope creep.
   verification pending.
 - Never repeat an identical tool call. If a command, test, or edit fails twice
   with the same error, stop and report the exact failure — do not keep retrying.
+- If you near the step limit mid-task, write `.orchestration/handoff-<task>.md`
+  (state, files touched, exact next step, failing command) and report it, so the
+  resumed or next session continues from facts instead of memory.
 - End every task with a **handoff packet** — it is the reviewer's only input:
   1. Files changed — exact paths;
-  2. Commands run — exact, with pass/fail result;
-  3. Spec deviations — anything done differently from the brief, or `none`;
-  4. Ledger deltas — DECISIONS.md lines added, INTEGRATION.md rows changed;
-  5. Open items — anything unverified, deferred, or needing an edit outside the brief.
+  2. Plan coverage — work-item IDs implemented, quoted from PLAN.md;
+  3. Commands run — exact, with pass/fail result, including `VERIFY:`;
+  4. Commit — the task's commit hash;
+  5. Spec deviations — anything done differently from the brief, or `none`;
+  6. Ledger deltas — DECISIONS.md lines added, INTEGRATION.md rows changed;
+  7. Open items — anything unverified, deferred, or needing an edit outside the brief.
 - If the brief is ambiguous or impossible as written, stop and say so — do not
   invent requirements.
 

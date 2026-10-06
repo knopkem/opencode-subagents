@@ -68,6 +68,38 @@ rejects same-model tasks. Two coders can never run in parallel.
 - `plugins/compaction-ledger.js` — injects PLAN.md, AGENTS.md, DECISIONS.md and
   INTEGRATION.md into compaction summaries so a resumed coder session re-reads
   its durable memory instead of trusting a lossy summary.
+- `plugins/process-gate.js` — turns the review/coverage rules into checks: it
+  validates coder briefs against PLAN.md work items, allows at most one
+  completed coder task per phase without a review, records reviewer verdicts,
+  and blocks phase exits / `COMPLETION.md` until every work item is covered,
+  reviewed, and the project's VERIFY artifact is green at HEAD. Modes:
+  `PROCESS_GATE=warn|enforce|off` (env) or `.orchestration/config.json`
+  `{"mode": "warn"}`; default `enforce`. Warn mode logs every violation to
+  `.orchestration/violations.log` and proceeds — use it for a first rollout.
+  It is stack-blind: it never runs project code itself.
+
+## Gates and evidence
+
+The pipeline keeps its own audit trail in the target project's git root:
+
+- **Work items** — PLAN.md carries `- [ ] P<phase>.<n> …` lines; every coder
+  brief and review cites them. `.orchestration/coverage.md` maps item → task →
+  commit → verdict.
+- **VERIFY contract** — AGENTS.md declares `VERIFY: <command>` in the project's
+  own toolchain (no language or tool is mandated). That command runs the
+  end-to-end check and writes `.orchestration/verify.json`
+  (`{"schema":1,"ok":true,"commit":"<revision>","checks":[…],"runner":"…"}`);
+  the harness only reads `ok` and `commit`.
+- **Reviews** — the reviewer appends one JSON line per review to
+  `.orchestration/reviews/log.jsonl`; `rework` blocks the phase.
+- **Commits** — the coder commits once per completed task (message
+  `P<phase>.<n>: <summary>`), so reviewers diff a fixed revision and any task
+  can be rolled back.
+- **Ledger** — `.orchestration/run.json` records tasks, commits, reviews and
+  testers. Violations land in `.orchestration/violations.log`.
+
+Harness checks are intentionally model-independent: a strong orchestrator runs
+faster, a weak one gets caught instead of shipping.
 
 ## Install
 
@@ -125,6 +157,10 @@ escape into the parent workspace. In each project, run `/init-agents` once.
 - **One task per model** — the serialize-task plugin reserves the provider and
   the agent type, so a single-model config degenerates to full serialization
   and the same repo runs on one box or many.
+- **Gates over goodwill** — the process gate enforces coverage, review pairing,
+  phase exits and the VERIFY artifact; RUN the orchestrator on a thinking model
+  for real work. A 9B no-think orchestrator can still drive coders, but it will
+  pick the wrong trade-offs long before the gate notices.
 - **Hard permission graph** — the orchestrator can only read `PLAN.md` /
   `AGENTS.md`; the coder may spawn only `tester`.
 - **Anchor the target root** — OpenCode resolves the project at the nearest

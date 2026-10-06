@@ -83,6 +83,43 @@ function report(directory, mode, message, options = {}) {
   }
 }
 
+// Repeated-rejection escalation. A weak orchestrator can rephrase the same rejected
+// brief indefinitely: the loop-breaker cannot see these attempts, because a gate
+// rejection throws in tool.execute.before (so no tool result is ever recorded for
+// its identical-output rule) and any interleaved call resets its consecutive-run
+// counter. Count rejections per dispatch and, on the third, name the situation
+// instead of repeating the same message. Observed in the wild: nine rephrasings of
+// one un-dispatchable brief ("Create .orchestration dir") in six minutes.
+const REJECTION_ESCALATION = 3
+const rejections = new Map()
+
+function short(text, max = 60) {
+  const s = String(text ?? "")
+  return s.length > max ? `${s.slice(0, max - 1)}…` : s
+}
+
+function rejectOrReport(directory, mode, agent, args, problems, sessionID) {
+  const description = args?.description ?? ""
+  const key = `${sessionID ?? "?"}|${agent}|${description}`
+  if (problems.length === 0) {
+    rejections.delete(key)
+    return
+  }
+  const attempts = (rejections.get(key) ?? 0) + 1
+  rejections.set(key, attempts)
+  if (attempts >= REJECTION_ESCALATION) {
+    rejections.delete(key)
+    report(
+      directory,
+      mode,
+      `${agent} brief "${short(description)}" rejected ${attempts}× — the defect is the dispatch, not the wording: ${problems.join("; ")}. Stop rephrasing it: make it a PLAN.md work item with the required sections, or report the blocker to the caller.`,
+      { data: { brief: description, attempts } },
+    )
+    return
+  }
+  for (const message of problems) report(directory, mode, message, { data: { brief: description, attempts } })
+}
+
 function readJson(file, fallback) {
   try {
     return JSON.parse(fs.readFileSync(file, "utf8"))
@@ -115,18 +152,55 @@ function planSnapshot(directory) {
   }
 }
 
-// Work items from PLAN.md: id -> { id, phase, title, raw }
-function parsePlan(directory) {
-  const { text } = planSnapshot(directory)
+// Work items from PLAN.md text: id -> { id, phase, title, raw }
+function parsePlanText(text) {
   const items = new Map()
-  if (text === null) return items
-  for (const match of text.matchAll(PLAN_ITEM)) {
+  if (text === null || text === undefined) return items
+  for (const match of String(text).matchAll(PLAN_ITEM)) {
     const id = match[1]
     if (!items.has(id)) {
       items.set(id, { id, phase: id.split(".")[0], title: match[2].trim(), raw: match[0] })
     }
   }
   return items
+}
+
+function parsePlan(directory) {
+  const { text } = planSnapshot(directory)
+  return parsePlanText(text)
+}
+
+// A PLAN.md that exists but declares no machine-readable work items makes every
+// downstream check vacuous: phase evaluation finds nothing to cover, and
+// evaluateCompletion iterates zero phases, so COMPLETION.md sails through. Seen
+// in the wild — a prose-only PLAN.md (phases and prose, no `## Work items`) ran
+// a whole build with the gate silent. A missing contract is a violation, not a
+// skip: unlike an absent PLAN.md (greenfield, legitimately before planning).
+function planContractViolation(directory) {
+  const { text } = planSnapshot(directory)
+  if (text === null) return null
+  if (parsePlan(directory).size > 0) return null
+  return "PLAN.md declares no work items (`- [ ] P<phase>.<n> <title> (files: <paths>; gate: <command>)`) — the process gate has nothing to track"
+}
+
+// PLAN.md work-item IDs are append-only once implementation starts: the
+// orchestrator holds cited IDs in flight, so a mid-run rewrite turns a valid
+// brief into "cites P0.1, which is not in PLAN.md" (seen in the wild: a planner
+// rewrote the plan while a coder dispatch was pending, P0.x → P1.x). The first
+// coder dispatch freezes the ID set; later drops are reported as a diagnostic —
+// the per-brief ID check already rejects the affected brief, so this only adds
+// the explanation.
+function droppedPlanIds(directory) {
+  const ledger = readLedger(directory)
+  const current = [...parsePlan(directory).keys()]
+  if (!Array.isArray(ledger.planIds)) {
+    if (current.length > 0) {
+      ledger.planIds = current
+      writeLedger(directory, ledger)
+    }
+    return []
+  }
+  return ledger.planIds.filter((id) => !current.includes(id))
 }
 
 function extractIds(prompt) {
@@ -147,6 +221,8 @@ function coderBriefViolations(directory, prompt) {
   }
   const ids = extractIds(prompt)
   if (ids.length === 0) violations.push("coder brief cites no work-item IDs (P<phase>.<n>)")
+  const contract = planContractViolation(directory)
+  if (contract) violations.push(contract)
   const plan = parsePlan(directory)
   if (plan.size > 0) {
     for (const id of ids) {
@@ -268,6 +344,8 @@ function evaluateCompletion(directory) {
   const plan = parsePlan(directory)
   const phases = [...new Set([...plan.values()].map((item) => item.phase))]
   const problems = []
+  const contract = planContractViolation(directory)
+  if (contract) problems.push(contract)
   for (const phase of phases) {
     const result = evaluatePhase(directory, phase, { requireVerify: false })
     for (const problem of result.problems) problems.push(`${phase}: ${problem}`)
@@ -359,10 +437,14 @@ export const ProcessGate = async ({ directory }) => {
   const dir = directory
   const mode = () => modeFor(dir)
 
-  function beginCoder(callID, args) {
+  function beginCoder(callID, args, sessionID) {
     const current = mode()
     if (current === "off") return
     const prompt = String(args?.prompt ?? "")
+    // Freeze/compare the ID set BEFORE anything writes the ledger: beginCoder
+    // rewrites run.json below, and a later read-modify-write would drop the
+    // snapshot written here.
+    const dropped = droppedPlanIds(dir)
     const { violations, ids } = coderBriefViolations(dir, prompt)
     const ledger = readLedger(dir)
     const phases = phaseOfIds(ids)
@@ -373,7 +455,13 @@ export const ProcessGate = async ({ directory }) => {
         pending.push(`${phase} has an unreviewed coder commit (${pendingInPhase.map((task) => task.commit).join(", ")})`)
       }
     }
-    for (const message of [...violations, ...pending]) report(dir, current, message, { data: { brief: args?.description } })
+    rejectOrReport(dir, current, "coder", args, [...violations, ...pending], sessionID)
+    for (const id of dropped) {
+      report(dir, current, `PLAN.md dropped work item ${id} — work-item IDs are append-only once implementation starts`, {
+        throwInEnforce: false,
+        data: { brief: args?.description, dropped: id },
+      })
+    }
 
     const plan = planSnapshot(dir)
     const seq = nextSeq(dir)
@@ -392,23 +480,21 @@ export const ProcessGate = async ({ directory }) => {
     stateFor(dir).calls.set(callID, { seq, commit: null, planHash: plan.hash })
   }
 
-  function beginReviewer(callID, args) {
+  function beginReviewer(callID, args, sessionID) {
     const current = mode()
     if (current === "off") return
     const prompt = String(args?.prompt ?? "")
     const match = prompt.match(REVIEW_OF)
     const reviewOf = match ? match[1] : null
+    const problems = []
     if (reviewOf === null) {
-      report(dir, current, "reviewer brief missing `review-of: <commit>`", { data: { brief: args?.description } })
+      problems.push("reviewer brief missing `review-of: <commit>`")
     } else {
       const ledger = readLedger(dir)
       const known = completedCoderTasks(ledger).some((task) => sameCommit(task.commit, reviewOf))
-      if (!known) {
-        report(dir, current, `review-of ${reviewOf} does not match any completed coder commit`, {
-          data: { brief: args?.description },
-        })
-      }
+      if (!known) problems.push(`review-of ${reviewOf} does not match any completed coder commit`)
     }
+    rejectOrReport(dir, current, "reviewer", args, problems, sessionID)
     const seq = nextSeq(dir)
     const ledger = readLedger(dir)
     ledger.tasks.push({
@@ -425,19 +511,17 @@ export const ProcessGate = async ({ directory }) => {
     stateFor(dir).calls.set(callID, { seq, commit: null, planHash: null })
   }
 
-  function beginTester(callID, args) {
+  function beginTester(callID, args, sessionID) {
     const current = mode()
     if (current === "off") return
     const prompt = String(args?.prompt ?? "")
     const gate = prompt.match(PHASE_GATE)
+    const problems = []
     if (gate) {
       const result = evaluatePhase(dir, gate[1], { requireVerify: true })
-      if (!result.ready) {
-        report(dir, current, `phase ${gate[1]} exit gate not met: ${result.problems.join("; ")}`, {
-          data: { brief: args?.description },
-        })
-      }
+      if (!result.ready) problems.push(`phase ${gate[1]} exit gate not met: ${result.problems.join("; ")}`)
     }
+    rejectOrReport(dir, current, "tester", args, problems, sessionID)
     const seq = nextSeq(dir)
     const ledger = readLedger(dir)
     ledger.tasks.push({
@@ -454,10 +538,10 @@ export const ProcessGate = async ({ directory }) => {
     stateFor(dir).calls.set(callID, { seq, commit: null, planHash: null })
   }
 
-  function dispatch(kind, callID, args) {
-    if (kind === "coder") beginCoder(callID, args)
-    else if (kind === "reviewer") beginReviewer(callID, args)
-    else if (kind === "tester") beginTester(callID, args)
+  function dispatch(kind, callID, args, sessionID) {
+    if (kind === "coder") beginCoder(callID, args, sessionID)
+    else if (kind === "reviewer") beginReviewer(callID, args, sessionID)
+    else if (kind === "tester") beginTester(callID, args, sessionID)
   }
 
   function finalize(callID, status, currentMode) {
@@ -487,7 +571,7 @@ export const ProcessGate = async ({ directory }) => {
         if (input?.tool === "task") {
           const { agent, args } = taskKind(input, output)
           if (agent === "coder" || agent === "reviewer" || agent === "tester") {
-            dispatch(agent, input.callID, args)
+            dispatch(agent, input.callID, args, input.sessionID)
           }
           return
         }
@@ -497,6 +581,22 @@ export const ProcessGate = async ({ directory }) => {
             const result = evaluateCompletion(dir)
             if (!result.ready) {
               report(dir, current, `COMPLETION.md blocked: ${result.problems.join("; ")}`, { data: { filePath } })
+            }
+          } else if (input?.tool === "write" && filePath.endsWith("PLAN.md")) {
+            // The plan author owns PLAN.md's format; a plan written without work
+            // items leaves the gate with nothing to track and the orchestrator
+            // with no ID to cite. Observed in the wild: an orchestrator told the
+            // planner to write PLAN.md "with these sections: Target / Plan
+            // coverage / Acceptance" (its own coder-brief skeleton), the planner
+            // complied with a table, and every downstream brief was rejected.
+            const content = String(output?.args?.content ?? input?.args?.content ?? "")
+            if (content && parsePlanText(content).size === 0) {
+              report(
+                dir,
+                current,
+                "PLAN.md blocked: no work items — PLAN.md needs `- [ ] P<phase>.<n> <title> (files: <paths>; gate: <command>)` lines (see the planner contract); the process gate tracks nothing without them",
+                { data: { filePath } },
+              )
             }
           }
         }
@@ -549,6 +649,8 @@ export const ProcessGate = async ({ directory }) => {
 // single plugin export (the loader treats every export as a plugin factory).
 ProcessGate.__internals = {
   parsePlan,
+  planContractViolation,
+  droppedPlanIds,
   extractIds,
   coderBriefViolations,
   filesFromBrief,

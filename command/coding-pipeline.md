@@ -16,8 +16,10 @@ never send a subagent into a parent, sibling, or workspace root, and treat an
 empty target as greenfield.
 
 1. **Plan.** Dispatch `@explorer` to map anything that already exists (skip for
-   a greenfield task), then `@planner` to write PLAN.md and, if the project has
-   none, a tailored AGENTS.md.
+   a greenfield task), then `@planner` to write PLAN.md — including its
+   `## Work items` section (`- [ ] P<phase>.<n> <title> (files: …; gate: …)`) —
+   and, if the project has none, a tailored AGENTS.md. No work items, no
+   tracking: the gate treats a plan without them as a violation.
 2. **Implement.** Dispatch one `@coder` with a self-contained brief: the goal,
    the relevant files, acceptance criteria, the PLAN.md/AGENTS.md/INTEGRATION.md
    paths, and an instruction to read them before editing.

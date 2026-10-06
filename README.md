@@ -38,7 +38,7 @@ rejects same-model tasks. Two coders can never run in parallel.
 
 | Agent | Mode | Model | Role |
 |---|---|---|---|
-| `orchestrator` | primary | own role (default: planner) | Decompose, delegate, integrate. No app code, no shell; may only read `PLAN.md` / `AGENTS.md`. |
+| `orchestrator` | primary | own role (default: planner) | Decompose, delegate, integrate. No app code, no shell; may read only the project docs (`PLAN.md`, `AGENTS.md`, `INTEGRATION.md`, `DECISIONS.md`, `COMPLETION.md`) and `.orchestration/` state. |
 | `planner` | subagent | own role | Write `PLAN.md` and `AGENTS.md`. Docs only. |
 | `explorer` | subagent | own role (default: builder) | Read-only codebase mapping. |
 | `coder` | subagent | own role | Implement bounded tasks within one phase's session; may call `tester`. |
@@ -69,10 +69,14 @@ rejects same-model tasks. Two coders can never run in parallel.
   INTEGRATION.md into compaction summaries so a resumed coder session re-reads
   its durable memory instead of trusting a lossy summary.
 - `plugins/process-gate.js` — turns the review/coverage rules into checks: it
-  validates coder briefs against PLAN.md work items, allows at most one
-  completed coder task per phase without a review, records reviewer verdicts,
-  and blocks phase exits / `COMPLETION.md` until every work item is covered,
-  reviewed, and the project's VERIFY artifact is green at HEAD. Modes:
+  validates coder briefs against PLAN.md work items (and flags a PLAN.md that
+  declares no work items at all, which would otherwise make every check
+  vacuous), allows at most one completed coder task per phase without a review,
+  records reviewer verdicts, and blocks phase exits / `COMPLETION.md` until
+  every work item is covered, reviewed, and the project's VERIFY artifact is
+  green at HEAD. A brief rejected three times escalates to an explicit
+  stop-and-report error — a rejected call never reaches the loop-breaker's hooks,
+  so the gate owns that case. Modes:
   `PROCESS_GATE=warn|enforce|off` (env) or `.orchestration/config.json`
   `{"mode": "warn"}`; default `enforce`. Warn mode logs every violation to
   `.orchestration/violations.log` and proceeds — use it for a first rollout.
@@ -84,7 +88,12 @@ The pipeline keeps its own audit trail in the target project's git root:
 
 - **Work items** — PLAN.md carries `- [ ] P<phase>.<n> …` lines; every coder
   brief and review cites them. `.orchestration/coverage.md` maps item → task →
-  commit → verdict.
+  commit → verdict. IDs are frozen at the first coder dispatch: a plan that
+  renumbers or drops one afterwards is reported (diagnostic — the affected brief
+  is rejected anyway, this just names the cause). A PLAN.md that exists but
+  declares **no** work items is a gate violation, not a skip: without items every
+  coverage check is vacuous and `COMPLETION.md` would pass on an empty plan (an
+  absent PLAN.md is still legal — that is greenfield, before planning).
 - **VERIFY contract** — AGENTS.md declares `VERIFY: <command>` in the project's
   own toolchain (no language or tool is mandated). That command runs the
   end-to-end check and writes `.orchestration/verify.json`
@@ -161,8 +170,11 @@ escape into the parent workspace. In each project, run `/init-agents` once.
   phase exits and the VERIFY artifact; RUN the orchestrator on a thinking model
   for real work. A 9B no-think orchestrator can still drive coders, but it will
   pick the wrong trade-offs long before the gate notices.
-- **Hard permission graph** — the orchestrator can only read `PLAN.md` /
-  `AGENTS.md`; the coder may spawn only `tester`.
+- **Hard permission graph** — the orchestrator can only read the project docs
+  (`PLAN.md`, `AGENTS.md`, `INTEGRATION.md`, `DECISIONS.md`, `COMPLETION.md`) and
+  the gate's own state under `.orchestration/` (it must be able to read the
+  status it is told to check — `coverage.md`, `run.json`,
+  `reviews/log.jsonl`, `verify.json`); the coder may spawn only `tester`.
 - **Anchor the target root** — OpenCode resolves the project at the nearest
   `.git`/`package.json` upward. A new, empty target has no anchor, so the parent
   workspace becomes the project root and `**` globs reach every sibling. Start

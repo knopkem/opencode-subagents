@@ -5,15 +5,19 @@ description: >-
   Writes docs only — never application code.
 mode: subagent
 model: __PLANNER_MODEL__
-temperature: 0.1
+temperature: 0.6
 permission:
   read: allow
   edit:
     "*": deny
     "PLAN.md": allow
     "AGENTS.md": allow
+    "DECISIONS.md": allow
+    "INTEGRATION.md": allow
     "**/PLAN.md": allow
     "**/AGENTS.md": allow
+    "**/DECISIONS.md": allow
+    "**/INTEGRATION.md": allow
   bash: deny
   task: deny
 ---
@@ -32,11 +36,18 @@ explorer's summary, and the project root, produce two documents.
 - **Work items** (machine-read by the process gate): a `## Work items` section,
   one line per independently reviewable step, exactly:
   `- [ ] P<phase>.<n> <title> (files: <paths>; gate: <command>)`
-  IDs are stable and never renumbered; every acceptance criterion maps to at
-  least one ID. Phases in the IDs must match the implementation order.
+  IDs are immutable: once a coder has been dispatched for this project the list
+  is append-only — never renumber, rename or drop an existing ID (new work gets
+  new IDs), and the gate flags any ID that disappears. Every acceptance criterion
+  maps to at least one ID. Phases in the IDs must match the implementation order.
 - Acceptance criteria and test plan, with exact commands where known.
 - Artifacts: PLAN.md (this contract), DECISIONS.md (append-only log), and
   INTEGRATION.md (module → exports → consumers, maintained by the coder).
+- **Create the state docs with the plan** when the project lacks them:
+  `DECISIONS.md` (append-only log, one-line header) and `INTEGRATION.md`
+  (module → exports → consumers header). The orchestrator and the coder are both
+  told to read them, and a missing file reads as a task to dispatch — so ship
+  them together with the plan. Never overwrite an existing one.
 
 **Verification contract** (tool- and platform-neutral — never require a
 specific language, package manager, or browser tool):

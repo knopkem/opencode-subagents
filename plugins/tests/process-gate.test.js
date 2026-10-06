@@ -297,3 +297,129 @@ test("modeFor: env overrides project config, config overrides default", () => {
   process.env.PROCESS_GATE = "off"
   assert.equal(internals.modeFor(dir), "off")
 })
+
+// --- PLAN.md contract: prose phases without work items must not pass ---------
+//
+// Real failure this guards: a PLAN.md written with prose phases (Goal, File map,
+// Implementation order) and no `## Work items` section parsed to zero items, so
+// every gate check was vacuous — phase evaluation covered nothing and
+// evaluateCompletion iterated zero phases and declared the project ready.
+
+function makeProsePlanProject() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "process-gate-prose-"))
+  tempDirs.push(dir)
+  git(dir, "init", "-q")
+  fs.writeFileSync(
+    path.join(dir, "PLAN.md"),
+    "# PLAN\n\n## Goal\nShip the thing.\n\n## Implementation order\n### Phase 1 — scaffolding\n1. npm init\n\n### Phase 2 — canvas\n1. render view\n",
+  )
+  commitAll(dir, "prose plan")
+  return dir
+}
+
+test("a PLAN.md with no work items is reported as a contract violation", () => {
+  const dir = makeProsePlanProject()
+  assert.ok(/declares no work items/.test(internals.planContractViolation(dir)))
+  const brief = internals.coderBriefViolations(dir, coderBrief(["P1.1"]))
+  assert.ok(brief.violations.some((v) => /declares no work items/.test(v)))
+})
+
+test("evaluateCompletion refuses a plan that declares no work items", () => {
+  const dir = makeProsePlanProject()
+  const result = internals.evaluateCompletion(dir)
+  assert.equal(result.ready, false)
+  assert.ok(result.problems.some((p) => /declares no work items/.test(p)))
+})
+
+test("an absent PLAN.md (greenfield) is not a contract violation", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "process-gate-empty-"))
+  tempDirs.push(dir)
+  git(dir, "init", "-q")
+  assert.equal(internals.planContractViolation(dir), null)
+})
+
+test("warn mode logs the missing work-item contract on a coder dispatch", async () => {
+  process.env.PROCESS_GATE = "warn"
+  const dir = makeProsePlanProject()
+  const handlers = await ProcessGate({ directory: dir })
+  await before(handlers, "task", "c1", { subagent_type: "coder", description: "T1", prompt: coderBrief(["P1.1"]) })
+  assert.ok(violations(dir).some((entry) => /declares no work items/.test(entry.message)))
+})
+
+// --- repeated-rejection escalation ------------------------------------------
+//
+// Real failure this guards: an orchestrator rephrased the same un-dispatchable
+// brief nine times in six minutes — a task with no PLAN.md work item ("create
+// .orchestration"), which no brief can make legal. A rejected call never reaches
+// the loop-breaker's hooks, so the gate has to own this case.
+
+test("enforce mode escalates a brief rejected three times", async () => {
+  process.env.PROCESS_GATE = "enforce"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  const args = { subagent_type: "coder", description: "Create .orchestration dir", prompt: "create the directory" }
+  await assert.rejects(before(handlers, "task", "c1", args), /missing "## Plan coverage"/)
+  await assert.rejects(before(handlers, "task", "c2", args), /missing "## Plan coverage"/)
+  await assert.rejects(before(handlers, "task", "c3", args), /rejected 3×/)
+})
+
+test("warn mode logs the escalation, and a different brief does not inherit it", async () => {
+  process.env.PROCESS_GATE = "warn"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  const args = { subagent_type: "coder", description: "Create .orchestration dir", prompt: "create the directory" }
+  for (const id of ["c1", "c2", "c3"]) await before(handlers, "task", id, args)
+  const log = violations(dir)
+  const escalated = log.filter((entry) => /rejected 3×/.test(entry.message))
+  assert.equal(escalated.length, 1)
+  assert.equal(escalated[0].attempts, 3)
+  await before(handlers, "task", "c4", { subagent_type: "coder", description: "Other brief", prompt: "create the directory" })
+  assert.equal(violations(dir).filter((entry) => /rejected 3×/.test(entry.message)).length, 1)
+  // A different session reusing the same description starts from zero.
+  for (const id of ["c5", "c6"]) {
+    await handlers["tool.execute.before"]({ tool: "task", callID: id, sessionID: "ses_other", args }, { args })
+  }
+  assert.equal(violations(dir).filter((entry) => /rejected 3×/.test(entry.message)).length, 1)
+})
+
+// --- plan IDs are append-only once implementation starts --------------------
+//
+// Real failure this guards: a planner rewrote PLAN.md mid-run (P0.x → P1.x) while
+// a coder dispatch was pending; the brief then cited an ID that no longer existed
+// and was rejected as "not in PLAN.md". The gate now freezes the ID set at the
+// first coder dispatch and names any ID that disappears.
+
+test("a plan that drops an existing work-item ID after the first dispatch is reported", async () => {
+  process.env.PROCESS_GATE = "warn"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  await before(handlers, "task", "c1", { subagent_type: "coder", description: "T1", prompt: coderBrief(["P6.1"]) })
+  fs.writeFileSync(path.join(dir, "PLAN.md"), "# PLAN\n\n## Work items\n- [ ] P7.1 renamed phase (files: src/x.ts; gate: VERIFY)\n")
+  await before(handlers, "task", "c2", { subagent_type: "coder", description: "T2", prompt: coderBrief(["P7.1"]) })
+  const log = violations(dir)
+  assert.ok(log.some((entry) => /dropped work item P6\.1/.test(entry.message)))
+  assert.ok(log.some((entry) => /dropped work item P6\.2/.test(entry.message)))
+})
+
+// --- the plan artifact itself is guarded ------------------------------------
+//
+// Real failure this guards: an orchestrator briefed the planner with its own
+// coder-brief skeleton ("PLAN.md with these sections: Target / Plan coverage /
+// Acceptance"), the planner wrote exactly that as a table, so PLAN.md had no
+// `- [ ] P<n>.<n>` lines, no IDs existed to cite, and every coder brief after it
+// was rejected. Blocking the bad plan at the write is the source-level fix.
+
+test("writing a PLAN.md with no work items is blocked, a valid one is not", async () => {
+  process.env.PROCESS_GATE = "enforce"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  const write = (callID, content) =>
+    handlers["tool.execute.before"]({ tool: "write", callID }, { args: { filePath: path.join(dir, "PLAN.md"), content } })
+  await assert.rejects(
+    write("w1", "# PLAN\n\n## Plan coverage\n\n| ID | Title |\n|----|-------|\n| P1.1 | core scaffolding |\n"),
+    /PLAN\.md blocked: no work items/,
+  )
+  const beforeCount = violations(dir).length
+  await write("w2", "# PLAN\n\n## Work items\n- [ ] P1.1 scaffold (files: package.json; gate: npm run build)\n")
+  assert.equal(violations(dir).length, beforeCount)
+})

@@ -123,6 +123,27 @@ test("coderBriefViolations flags missing sections, untracked IDs, and unknown ID
   assert.ok(noIds.violations.some((v) => v.includes("cites no work-item IDs")))
 })
 
+test("claimed work-item IDs come only from `## Plan coverage`", () => {
+  const dir = makeProject()
+  const brief = `${coderBrief(["P6.1"])}\n\n## Out of scope\n- P6.2 files (src/css/app.css) belong to the concurrent task`
+  const { ids } = internals.coderBriefViolations(dir, brief)
+  assert.deepEqual(ids, ["P6.1"])
+  // The out-of-scope mention is still validated, it just is not a claim.
+  const bogus = `${coderBrief(["P6.1"])}\n\n## Out of scope\n- P9.9 untouched`
+  assert.ok(internals.coderBriefViolations(dir, bogus).violations.some((v) => v.includes("P9.9")))
+})
+
+test("a brief's non-coverage mentions do not inflate the task's planIds", async () => {
+  process.env.PROCESS_GATE = "warn"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  const brief = `${coderBrief(["P6.1"])}\n\n## Out of scope\n- P6.2 files (src/css/app.css) belong to the concurrent task`
+  await before(handlers, "task", "c1", { subagent_type: "coder", description: "T1", prompt: brief })
+  const ledger = internals.readLedger(dir)
+  const task = ledger.tasks.find((entry) => entry.agent === "coder")
+  assert.deepEqual(task.planIds, ["P6.1"])
+})
+
 // --- warn mode: the three real failures are logged, not blocked -------------
 
 test("warn mode logs a brief that drops a plan item instead of blocking", async () => {
@@ -192,6 +213,47 @@ test("enforce mode rejects a second coder while a review is pending", async () =
   await after(handlers, "c1", { subagent_type: "coder" })
   await assert.rejects(
     before(handlers, "task", "c2", { subagent_type: "coder", description: "T2", prompt: coderBrief(["P6.2"]) }),
+    /unreviewed coder commit/,
+  )
+})
+
+test("enforce mode allows a coder dispatch while the prior commit's review is in flight", async () => {
+  process.env.PROCESS_GATE = "enforce"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  await before(handlers, "task", "c1", { subagent_type: "coder", description: "T1", prompt: coderBrief(["P6.1"]) })
+  const commit1 = commitAll(dir, "P6.1")
+  await after(handlers, "c1", { subagent_type: "coder" })
+
+  // The sanctioned batch: review(P6.1) ∥ coding(P6.2) in one message.
+  await before(handlers, "task", "r1", { subagent_type: "reviewer", description: "R1", prompt: reviewerBrief(commit1, ["P6.1"]) })
+  await before(handlers, "task", "c2", { subagent_type: "coder", description: "T2", prompt: coderBrief(["P6.2"]) })
+  const commit2 = commitAll(dir, "P6.2")
+  await after(handlers, "c2", { subagent_type: "coder" })
+
+  appendReview(dir, { reviewOf: commit1, planIds: ["P6.1"], verdict: "ship" })
+  await after(handlers, "r1", { subagent_type: "reviewer" })
+
+  assert.ok(!violations(dir).some((entry) => /unreviewed coder commit/.test(entry.message)))
+  const phase = internals.evaluatePhase(dir, "P6", { requireVerify: false })
+  assert.ok(!phase.problems.some((p) => p.includes(commit1)))
+  assert.ok(phase.problems.some((p) => p.includes(commit2))) // still pending its review
+})
+
+test("the in-flight exemption is per commit: a second unreviewed commit still blocks", async () => {
+  process.env.PROCESS_GATE = "enforce"
+  const dir = makeProject()
+  const handlers = await ProcessGate({ directory: dir })
+  await before(handlers, "task", "c1", { subagent_type: "coder", description: "T1", prompt: coderBrief(["P6.1"]) })
+  const commit1 = commitAll(dir, "P6.1")
+  await after(handlers, "c1", { subagent_type: "coder" })
+  await before(handlers, "task", "r1", { subagent_type: "reviewer", description: "R1", prompt: reviewerBrief(commit1, ["P6.1"]) })
+  await before(handlers, "task", "c2", { subagent_type: "coder", description: "T2", prompt: coderBrief(["P6.2"]) })
+  commitAll(dir, "P6.2")
+  await after(handlers, "c2", { subagent_type: "coder" })
+  // r1 covers commit1 only; commit2 has no reviewer running, so a third coder is blocked.
+  await assert.rejects(
+    before(handlers, "task", "c3", { subagent_type: "coder", description: "T3", prompt: coderBrief(["P6.2"]) }),
     /unreviewed coder commit/,
   )
 })

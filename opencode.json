@@ -20,7 +20,9 @@
         "edit": "deny",
         "bash": {
           "*": "deny",
-          "true": "allow"
+          "true": "allow",
+          "ls -A": "allow",
+          "ls -A *": "allow"
         },
         "webfetch": "deny",
         "websearch": "deny",

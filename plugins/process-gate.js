@@ -208,6 +208,27 @@ function extractIds(prompt) {
   return found ? [...new Set(found)] : []
 }
 
+function sectionText(prompt, heading) {
+  const lines = String(prompt ?? "").split(/\r?\n/)
+  const start = lines.findIndex((line) => line.trim() === heading)
+  if (start < 0) return ""
+  const out = []
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^##\s/.test(lines[i])) break
+    out.push(lines[i])
+  }
+  return out.join("\n")
+}
+
+// Only the IDs under `## Plan coverage` are the task's claimed work items.
+// IDs mentioned elsewhere (Out of scope, acceptance quotes) are context, not
+// claims: counting every mention made each brief claim the whole plan, so
+// coverage.md credited all items to the first coder and phase checks went
+// vacuous. Unknown IDs are still validated wherever they appear.
+function claimedIds(prompt) {
+  return extractIds(sectionText(prompt, "## Plan coverage"))
+}
+
 function phaseOfIds(ids) {
   const phases = new Set()
   for (const id of ids) phases.add(id.split(".")[0])
@@ -219,13 +240,13 @@ function coderBriefViolations(directory, prompt) {
   for (const section of REQUIRED_CODER_SECTIONS) {
     if (!String(prompt).includes(section)) violations.push(`coder brief missing "${section}"`)
   }
-  const ids = extractIds(prompt)
+  const ids = claimedIds(prompt)
   if (ids.length === 0) violations.push("coder brief cites no work-item IDs (P<phase>.<n>)")
   const contract = planContractViolation(directory)
   if (contract) violations.push(contract)
   const plan = parsePlan(directory)
   if (plan.size > 0) {
-    for (const id of ids) {
+    for (const id of extractIds(prompt)) {
       if (!plan.has(id)) violations.push(`brief cites ${id}, which is not in PLAN.md`)
     }
   }
@@ -305,6 +326,16 @@ function completedCoderTasks(ledger, phase) {
 function reviewedBy(ledger, commit) {
   return ledger.tasks.some(
     (task) => task.agent === "reviewer" && task.status === "completed" && sameCommit(task.reviewOf, commit),
+  )
+}
+
+// A running review already accounts for its commit: the orchestrator batches
+// review(N) ∥ coding(N+1) in one message, so the review is in flight — not yet
+// completed — when the next coder is dispatched. Phase exit still requires the
+// completed review; this only keeps the sanctioned batch from being rejected.
+function reviewInFlight(ledger, commit) {
+  return ledger.tasks.some(
+    (task) => task.agent === "reviewer" && task.status === "running" && sameCommit(task.reviewOf, commit),
   )
 }
 
@@ -450,7 +481,9 @@ export const ProcessGate = async ({ directory }) => {
     const phases = phaseOfIds(ids)
     const pending = []
     for (const phase of phases) {
-      const pendingInPhase = completedCoderTasks(ledger, phase).filter((task) => !reviewedBy(ledger, task.commit))
+      const pendingInPhase = completedCoderTasks(ledger, phase).filter(
+        (task) => !reviewedBy(ledger, task.commit) && !reviewInFlight(ledger, task.commit),
+      )
       if (pendingInPhase.length >= 1) {
         pending.push(`${phase} has an unreviewed coder commit (${pendingInPhase.map((task) => task.commit).join(", ")})`)
       }
@@ -652,6 +685,8 @@ ProcessGate.__internals = {
   planContractViolation,
   droppedPlanIds,
   extractIds,
+  sectionText,
+  claimedIds,
   coderBriefViolations,
   filesFromBrief,
   evaluatePhase,

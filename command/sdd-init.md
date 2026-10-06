@@ -7,9 +7,12 @@ Begin SDD for: $ARGUMENTS
 
 Scope every brief to the target directory the user named (or the current
 working directory): never send a subagent into a parent, sibling, or workspace
-root. An empty target is greenfield, not a reason to look around.
+root.
 
-1. Delegate to `@explorer` to map the parts of the codebase this touches.
+1. Run `ls -A` yourself to check the target. If it lists nothing — or only
+   `.git`/`.orchestration` — it is greenfield: skip `@explorer`, never look
+   around. Otherwise delegate to `@explorer` to map the parts of the codebase
+   this touches.
 2. Delegate to `@planner` to write PLAN.md: goal, constraints, a `## Work items`
    section with one line per independently reviewable step in the exact form
    `- [ ] P<phase>.<n> <title> (files: <paths>; gate: <command>)`, and

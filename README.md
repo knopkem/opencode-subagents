@@ -12,7 +12,9 @@ only — model IDs stay on your machine.
 Explore → Plan → Decompose → Dispatch → Review → Integrate
 ```
 
-1. **Explore** — `explorer` maps the code and returns a short summary.
+1. **Explore** — the orchestrator runs `ls -A` itself; a non-empty target goes
+   to `explorer` to map the code and return a short summary. Empty (or only
+   `.git`/`.orchestration`) is greenfield — no explorer call.
 2. **Plan** — `planner` writes `PLAN.md` (file map, interfaces, ordered steps,
    acceptance criteria) and, if missing, a tailored `AGENTS.md`.
 3. **Decompose** — the orchestrator splits the plan into independent tasks and
@@ -43,7 +45,7 @@ rejects same-model tasks. Two coders can never run in parallel.
 
 | Agent | Mode | Model | Role |
 |---|---|---|---|
-| `orchestrator` | primary | own role (default: planner) | Decompose, delegate, integrate. No app code, no shell; may read only the project docs (`PLAN.md`, `AGENTS.md`, `INTEGRATION.md`, `DECISIONS.md`, `COMPLETION.md`) and `.orchestration/` state. |
+| `orchestrator` | primary | own role (default: planner) | Decompose, delegate, integrate. No app code; shell limited to `ls -A` for the empty-target check; may read only the project docs (`PLAN.md`, `AGENTS.md`, `INTEGRATION.md`, `DECISIONS.md`, `COMPLETION.md`) and `.orchestration/` state. |
 | `planner` | subagent | own role | Write `PLAN.md` and `AGENTS.md`. Docs only. |
 | `explorer` | subagent | own role (default: builder) | Read-only codebase mapping. |
 | `coder` | subagent | own role | Implement bounded tasks; resumed within a phase only on split-provider setups; may call `tester`. |
@@ -182,7 +184,8 @@ escape into the parent workspace. In each project, run `/init-agents` once.
   (`PLAN.md`, `AGENTS.md`, `INTEGRATION.md`, `DECISIONS.md`, `COMPLETION.md`) and
   the gate's own state under `.orchestration/` (it must be able to read the
   status it is told to check — `coverage.md`, `run.json`,
-  `reviews/log.jsonl`, `verify.json`); the coder may spawn only `tester`.
+  `reviews/log.jsonl`, `verify.json`), plus run one command, `ls -A`, to test
+  the target for emptiness before delegating; the coder may spawn only `tester`.
 - **Anchor the target root** — OpenCode resolves the project at the nearest
   `.git`/`package.json` upward. A new, empty target has no anchor, so the parent
   workspace becomes the project root and `**` globs reach every sibling. Start
@@ -199,7 +202,8 @@ escape into the parent workspace. In each project, run `/init-agents` once.
   [#51315](https://github.com/anomalyco/opencode/issues/51315),
   [#50806](https://github.com/anomalyco/opencode/issues/50806)). Use regular
   providers.
-- The orchestrator is intentionally blind: when it needs context, it delegates.
+- The orchestrator is intentionally blind apart from the `ls -A` empty-target
+  check: when it needs context, it delegates.
 
 ## Credits
 

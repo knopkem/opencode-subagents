@@ -35,7 +35,7 @@ ln -sf "$PWD/plugins/"*.js ~/.config/opencode/plugins/
 repeats, identical output 3× even when interleaved, 5 consecutive edits to one
 file) so weak builder models cannot loop indefinitely; thresholds are constants
 at the top of the file. `plugins/compaction-ledger.js` keeps PLAN.md, AGENTS.md,
-DECISIONS.md and INTEGRATION.md in compaction summaries so a resumed coder
+DECISIONS.md and INTEGRATION.md in compaction summaries so a long-running coder
 session re-reads its durable memory instead of trusting a lossy summary.
 `plugins/process-gate.js` enforces the pipeline's review/coverage rules; run the
 first real project with `PROCESS_GATE=warn` (or
@@ -49,9 +49,9 @@ saved selection), role flags `--orchestrator M --planner M --reviewer M
 --tester M --builder M --explorer M` (any subset; unset roles keep their saved
 value or fall back to planner/builder), `PLANNER BUILDER [TESTER]` (legacy
 shorthand), `--think` / `--no-think` (builder reasoning on/off; off by
-default), `--sessions persistent|fresh` (one resumable coder session per phase
-— the default — or a fresh coder per task), `--no-link` (don't touch the config
-symlink).
+default), `--no-link` (don't touch the config symlink). Coder session mode is
+derived: one resumable coder session per phase when the builder is on a
+different provider than the orchestrator, a fresh coder per task otherwise.
 
 ## Manual install
 

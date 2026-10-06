@@ -84,8 +84,9 @@ Read PLAN.md, AGENTS.md, DECISIONS.md, INTEGRATION.md before editing.
 - <concurrent task files; edits the coder must not make>
 ```
 
-A reviewer brief adds `review-of: <coder commit hash>`; a phase-exit tester
-brief adds `GATE: phase-P<n>-exit`.
+A reviewer brief adds `review-of: <coder commit hash>`; a tester brief names the
+change it tests—`test-of: <commit>` or a `<base>..HEAD` range—and a phase-exit
+tester brief adds `GATE: phase-P<n>-exit`.
 
 **Only dispatch work that is a PLAN.md work item.** Every brief cites
 `P<phase>.<n>` and the gate resolves it against PLAN.md — there is no "scaffold"
@@ -117,12 +118,14 @@ Follow the SDD loop:
    be done without knowing each other's internals. If two tasks are tightly
    coupled, merge them into one.
 # __IF sessions persistent__
-4. **Dispatch.** Run **one coder session per phase**. The first task of a phase
-   starts a fresh `@coder` with a self-contained brief: goal, files, acceptance
-   criteria, and the absolute PLAN.md/AGENTS.md/INTEGRATION.md paths (it must
-   read them first) — and capture the `task_id` the task tool returns. Every
-   later task in that phase resumes the same session by passing that `task_id`,
-   so the coder keeps its mind-model. A new phase starts a new session.
+4. **Dispatch.** Run **one coder session per phase** (rendered only when the
+   builder runs on a different provider than you, so its session cannot compete
+   with yours). The first task of a phase starts a fresh `@coder` with a
+   self-contained brief: goal, files, acceptance criteria, and the absolute
+   PLAN.md/AGENTS.md/INTEGRATION.md paths (it must read them first) — and
+   capture the `task_id` the task tool returns. Every later task in that phase
+   resumes the same session by passing that `task_id`, so the coder keeps its
+   mind-model. A new phase starts a new session.
 # __ENDIF__
 # __IF sessions fresh__
 4. **Dispatch.** Send each task to a **fresh** `@coder` with a self-contained
@@ -131,20 +134,21 @@ Follow the SDD loop:
    starts with **zero context** from other tasks — put everything it needs in
    the brief; the plan and the ledger files are the only shared memory.
 # __ENDIF__
-5. **Review (two-stage).** Every task gets its own review. Dispatch `@reviewer`
-   only after the coder reports the brief's gates green (typecheck, tests,
-   build, VERIFY). Its brief is the **packet**:
-   `review-of: <commit from the coder packet>`, the work-item IDs quoted from
-   PLAN.md, changed files, acceptance criteria, gate output, and the coder's
-   ledger deltas — the reviewer starts there and opens only files the packet
-   does not cover. Review is spec-compliance against PLAN.md and the brief
-   first, then code quality — including reachability (no dead code) and whether
-   INTEGRATION.md matches reality. Test files get a presence check only: every
-   acceptance criterion needs a named test; test quality belongs to `@tester`.
-   Capture the reviewer `task_id` and resume that session for review(N+1) in
-   the same phase; a new phase starts a fresh reviewer. The reviewer appends
-   its verdict to `.orchestration/reviews/log.jsonl`; read the verdict word
-   from its report and treat `rework` as blocking.
+5. **Review (two-stage).** Every task gets its own review, in a **fresh**
+   `@reviewer` session — never pass a `task_id`. Dispatch it only after the
+   coder reports the brief's gates green (typecheck, tests, build, VERIFY).
+   Its brief is the **packet**: `review-of: <commit from the coder packet>`, the
+   work-item IDs quoted from PLAN.md, changed files, acceptance criteria, gate
+   output, and the coder's ledger deltas. The reviewer runs
+   `git show <commit>` itself for the diff and `git show <commit>:<path>` for
+   context — you never carry code. Review is spec-compliance against PLAN.md
+   and the brief first, then code quality — including reachability (no dead
+   code) and whether INTEGRATION.md matches reality. Test files get a presence
+   check only: every acceptance criterion needs a named test; test quality
+   belongs to `@tester`. For a re-review after fixes, quote the previous
+   findings verbatim — a fresh reviewer has no memory of them. The reviewer
+   appends its verdict to `.orchestration/reviews/log.jsonl`; read the verdict
+   word from its report and treat `rework` as blocking.
 # __IF review parallel__
    `task` is foreground, so a lone reviewer call parks you. The reviewer is on a
    different model from the builder here, so when the next task is already
@@ -158,15 +162,18 @@ Follow the SDD loop:
    never run alongside a coder: dispatch it alone and wait for the result.
 # __ENDIF__
 # __IF sessions persistent__
-   Send fixes back to the same session via its `task_id`, queued until any
-   in-flight task returns — never interrupt a running coder.
+   Send fixes back to the same coder session via its `task_id`, queued until
+   any in-flight task returns — never interrupt a running coder.
 # __ENDIF__
 # __IF sessions fresh__
-   Send fixes back to a fresh `@coder` as a new, self-contained fix brief.
+   Send fixes back to a fresh `@coder` as a new, self-contained fix brief that
+   cites the commit under review.
 # __ENDIF__
-6. **Integrate.** Run the full suite via `@tester` and validate end-to-end.
-   The phase-exit brief carries the literal marker `GATE: phase-P<n>-exit` and
-   names the project's `VERIFY:` command from AGENTS.md. Before dispatching it,
+6. **Integrate.** Run the full suite via a **fresh** `@tester` and validate
+   end-to-end — never pass a `task_id`. The phase-exit brief carries the literal
+   marker `GATE: phase-P<n>-exit`, the phase's commit range (so the fresh
+   session can `git diff <base>..HEAD`), and names the project's `VERIFY:`
+   command from AGENTS.md. Before dispatching it,
    confirm from the coverage ledger that every `P<n>.*` work item is implemented
    and reviewed, and that `.orchestration/verify.json` is green at HEAD. Never
    mark a phase complete, and never ask for `COMPLETION.md`, ahead of this.
@@ -185,6 +192,11 @@ Rules:
   subagents must not read, glob, grep, or list parent directories, sibling
   projects, or the workspace root. An empty target is a greenfield answer, not
   an invitation to look around.
+- **Subagents are stateless.** Planner, explorer, reviewer and tester always
+  run in fresh sessions — never pass them a `task_id`. Only the coder may be
+  resumed within a phase, and only where the rendered dispatch rules say so.
+  You are the only long-running session: keep state in the briefs and the
+  ledger files, never in subagent memory.
 - **One task per model.** Each model provider serves one session at a time:
   never batch two tasks that share a provider, and never start two coders (the
   builder model also serves the explorer). The serialize-task plugin enforces
@@ -208,9 +220,10 @@ Rules:
   DECISIONS.md and INTEGRATION.md (append-only, never code). Shared shell files
   (main.ts, index.html, styles, configs) and phase wiring break disjointness —
   don't batch those; dispatch review(N) alone first.
-- **Tell the reviewer the tree is moving.** Name the concurrent task's files in
-  the brief as out of scope, tell it to ignore any file not in the packet, and
-  pass the exact packet test paths to run — not the whole suite.
+- **The reviewer judges a frozen commit.** It diffs `review-of` itself, so a
+  concurrent task cannot confuse it; tell it to read context at that revision
+  (`git show <commit>:<path>`) and to ignore uncommitted changes. Pass the exact
+  packet test paths to run — not the whole suite.
 - **Review gates the phase, not the schedule.** Fixes from review(N) and a
   green test(N) must land before phase N is complete and before the final
   end-to-end check — but they must not delay starting a disjoint phase N+1.
@@ -220,13 +233,16 @@ Rules:
   reviews are batched into one cleanup task at phase end — never one dispatch
   per nit.
 - **Never interrupt, never hold.** If review(N) returns while coding(N+1) runs,
-  queue the fixes for that session and dispatch them when the task returns. The
-  coder session idles between tasks — only you are parked by a foreground
-  `task` call.
+  queue the fixes and dispatch them when the in-flight task returns — as a
+  resumed task on that coder session where the rules allow it, else as a fresh
+  fix brief. Only you are parked by a foreground `task` call.
 - Every brief must include the absolute target directory, the absolute
   PLAN.md/AGENTS.md/INTEGRATION.md paths, and tell the subagent to read the
   docs first — a fresh coder knows nothing else, and a resumed one must trust
   files over memory.
+- Every review and tester brief names what to diff: `review-of: <commit>` or
+  `test-of: <commit>` for one task, the commit range for a phase exit. A fresh
+  session that is not told the revision cannot do its job.
 # __IF sessions persistent__
 - **Many tasks, few sessions:** keep each task small (one module + its test
   file, ≈3 files, ends with typecheck + tests green), but run a whole phase in

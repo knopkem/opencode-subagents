@@ -23,13 +23,15 @@ empty target as greenfield.
 2. **Implement.** Dispatch one `@coder` with a self-contained brief: the goal,
    the relevant files, acceptance criteria, the PLAN.md/AGENTS.md/INTEGRATION.md
    paths, and an instruction to read them before editing.
-3. **Review (two-stage).** Pass the diff to `@reviewer` — spec-compliance
-   against PLAN.md first, then quality and reachability (no dead code). The
-   reviewer did not write this code; it stays skeptical and only reports.
-4. **Fix.** Send blockers/should-fixes back per your session policy (resume the
-   coder session, or a fresh fix brief); repeat 3–4 until the reviewer says ship.
-5. **Verify.** Hand the change to `@tester` to add/run tests and report results
-   verbatim.
+3. **Review (two-stage).** Point a **fresh** `@reviewer` at the coder's commit
+   (`review-of: <commit>`) — it diffs the commit itself. Spec-compliance against
+   PLAN.md first, then quality and reachability (no dead code). The reviewer did
+   not write this code; it stays skeptical and only reports.
+4. **Fix.** Send blockers/should-fixes back per the rendered session policy
+   (resume the coder session, or a fresh fix brief); repeat 3–4 until the
+   reviewer says ship.
+5. **Verify.** Hand the change to a **fresh** `@tester` (`test-of: <commit>`) to
+   add/run tests and report results verbatim.
 
 This path is serial by construction: a single task has no N+1 to overlap, so
 review and verification run only after the coder stops. For pipelining

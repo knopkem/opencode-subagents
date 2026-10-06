@@ -6,9 +6,11 @@ The repository only ever contains placeholders (`__ORCHESTRATOR_MODEL__`,
 `__BUILDER_MODEL__`, `__EXPLORER_MODEL__`, `# __BUILDER_OPTIONS__`) and choice
 blocks (`# __IF sessions|review|test ...__`). Your selection is saved to
 gitignored `models.local.json` and rendered into gitignored `agent.local/`,
-which is symlinked into `~/.config/opencode/agent`. The `review`/`test` blocks
-resolve by comparing model providers, so the orchestrator prompt states exactly
-which overlaps the current split permits.
+which is symlinked into `~/.config/opencode/agent`. The `review`, `test` and
+`sessions` blocks all resolve from the provider split: `review`/`test` state
+which overlaps the current split permits, and the coder session mode is
+`persistent` (one resumable coder session per phase) only when the builder does
+not share the orchestrator's provider — otherwise `fresh`, one session per task.
 
 Every role is chosen independently, so you can give several roles (or all) the
 same model to collapse them. Defaults for unspecified roles:
@@ -32,8 +34,6 @@ Usage:
     scripts/set-models.py --render                 re-render from models.local.json
     scripts/set-models.py --think ...              builder keeps its reasoning
     scripts/set-models.py --no-think ...           builder reasoning off (default)
-    scripts/set-models.py --sessions persistent    one resumable coder session per phase (default)
-    scripts/set-models.py --sessions fresh         a fresh coder session per task
     scripts/set-models.py --force ...              allow ids not in `opencode models`
     scripts/set-models.py --no-link ...            don't touch ~/.config/opencode/agent
 """
@@ -72,7 +72,6 @@ ROLE_DEFAULTS = {
 MODEL_TOKEN = re.compile(r"__[A-Z]+_MODEL__")
 OPTIONS_MARKER = "# __BUILDER_OPTIONS__"
 BUILDER_OPTIONS = "reasoningEffort: low\nchat_template_kwargs:\n  enable_thinking: false"
-SESSION_MODES = ("persistent", "fresh")
 CHOICE_BLOCK = re.compile(
     r"^# __IF (\w+) (\w+)__\n(.*?)^# __ENDIF__\n",
     re.DOTALL | re.MULTILINE,
@@ -99,19 +98,6 @@ def list_models():
             seen.add(line)
             models.append(line)
     return models
-
-
-def prompt_sessions(default="persistent"):
-    while True:
-        ans = input(f"\nSession mode [persistent/fresh] (Enter = {default}): ")
-        ans = ans.strip().lower()
-        if not ans:
-            return default
-        if ans in ("p", "persistent"):
-            return "persistent"
-        if ans in ("f", "fresh"):
-            return "fresh"
-        print("Enter 'persistent' or 'fresh'.")
 
 
 def print_models(models):
@@ -160,10 +146,13 @@ def apply_choices(text, choices):
 
 
 def session_mode(selection):
-    mode = selection.get("sessions") or SESSION_MODES[0]
-    if mode not in SESSION_MODES:
-        sys.exit(f"error: sessions must be one of {', '.join(SESSION_MODES)}")
-    return mode
+    # A resumed coder session competes with the orchestrator's long-running
+    # session on the same provider, so it is only safe when the builder runs
+    # on a different provider. Collapsed setups get a fresh coder per task.
+    roles = resolve_roles(selection)
+    if provider_of(roles["builder"]) == provider_of(roles["orchestrator"]):
+        return "fresh"
+    return "persistent"
 
 
 def resolve_roles(selection):
@@ -194,6 +183,7 @@ def load_selection():
 
 
 def save_selection(selection):
+    selection.pop("sessions", None)  # legacy key; session mode is derived
     SELECTION.write_text(json.dumps(selection, indent=2) + "\n")
 
 
@@ -235,7 +225,7 @@ def render(selection, link=True):
         materialize(name, model, token, builder_options)
 
     print(f"rendered {len(written)} agents -> {OUT_DIR}")
-    print(f"sessions: {session_mode(selection)}")
+    print(f"coder sessions: {session_mode(selection)} (derived from the provider split)")
     for name, model in written:
         print(f"  {name} -> {model}")
 
@@ -259,20 +249,11 @@ def link_config():
 
 
 def parse_args(argv):
-    sessions = None
     role_flags = {}
     positional = []
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg == "--sessions":
-            if i + 1 >= len(argv):
-                sys.exit("error: --sessions needs a value (persistent|fresh)")
-            sessions = argv[i + 1]
-            if sessions not in SESSION_MODES:
-                sys.exit(f"error: --sessions must be one of {', '.join(SESSION_MODES)}")
-            i += 2
-            continue
         if arg in ROLE_FLAGS:
             if i + 1 >= len(argv):
                 sys.exit(f"error: {arg} needs a model value")
@@ -284,7 +265,7 @@ def parse_args(argv):
             continue
         positional.append(arg)
         i += 1
-    return sessions, role_flags, positional
+    return role_flags, positional
 
 
 def validate(selection, models, force):
@@ -310,20 +291,14 @@ def main():
     no_think = "--no-think" in args
     render_only = "--render" in args
     link = "--no-link" not in args
-    sessions, role_flags, positional = parse_args(args)
+    role_flags, positional = parse_args(args)
 
     if render_only:
         selection = load_selection()
         if not selection:
             sys.exit(f"error: {SELECTION} not found; run set-models.py first")
-        changed = False
         if think or no_think:
             selection["builder_think"] = bool(think and not no_think)
-            changed = True
-        if sessions:
-            selection["sessions"] = sessions
-            changed = True
-        if changed:
             save_selection(selection)
         render(selection, link=link)
         return
@@ -353,8 +328,6 @@ def main():
                 "explorer": prompt_choice("explorer", models, default=builder),
             }
         )
-        if not sessions:
-            sessions = prompt_sessions()
     else:
         if not selection.get("planner"):
             print_models(models)
@@ -368,7 +341,6 @@ def main():
             sys.exit(f"error: {role} model is required")
     selection.update({role: roles[role] for role in ROLES})
 
-    selection["sessions"] = sessions or selection.get("sessions") or SESSION_MODES[0]
     if think or no_think:
         selection["builder_think"] = bool(think and not no_think)
     else:

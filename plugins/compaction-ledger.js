@@ -1,10 +1,11 @@
-// Keeps a phase-persistent coder session honest across compaction.
+// Keeps a long-running coder session honest across compaction.
 //
-// A coder session that spans a whole phase eventually exceeds the context
-// window and gets compacted. The summary is lossy, so this plugin injects the
-// project's durable memory files into the compaction prompt: the session then
-// re-reads them instead of trusting a degraded summary. Files are only listed
-// when they actually exist in the project directory.
+// A coder session that spans a whole task (or phase, when the builder runs on
+// a separate provider) eventually exceeds the context window and gets
+// compacted. The summary is lossy, so this plugin injects the project's
+// durable memory files into the compaction prompt: the session then re-reads
+// them instead of trusting a degraded summary. Files are only listed when they
+// actually exist in the project directory.
 
 import fs from "node:fs"
 import path from "node:path"

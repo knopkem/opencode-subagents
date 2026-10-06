@@ -17,17 +17,22 @@ Explore → Plan → Decompose → Dispatch → Review → Integrate
    acceptance criteria) and, if missing, a tailored `AGENTS.md`.
 3. **Decompose** — the orchestrator splits the plan into independent tasks and
    groups them into phases by integration seam.
-4. **Dispatch** — phase-persistent by default (later tasks resume the phase's
-   coder session via `task_id`) or a fresh coder per task with `--sessions
-   fresh`. Briefs point at `PLAN.md` / `AGENTS.md` / `INTEGRATION.md`.
-5. **Review** — after gates are green, `reviewer` starts from the coder's
-   handoff packet and checks spec-compliance, reachability (no dead code), then
-   quality; tests get a presence check only (quality is `tester`'s job). One
-   resumable reviewer session per phase; fixes go back to the coder session,
-   queued behind any in-flight task.
-6. **Integrate** — `tester` runs the suite and reports raw results.
+4. **Dispatch** — the coder session mode derives from the provider split: when
+   the builder runs on a different provider than the orchestrator, later tasks
+   in a phase resume the coder session via `task_id`; otherwise each task gets a
+   fresh coder. Briefs point at `PLAN.md` / `AGENTS.md` / `INTEGRATION.md`.
+5. **Review** — after gates are green, a fresh `reviewer` starts from the
+   coder's handoff packet and diffs the `review-of` commit itself (`git show`).
+   It checks spec-compliance, reachability (no dead code), then quality; tests
+   get a presence check only (quality is `tester`'s job). Fixes go back to the
+   coder — same session on split setups, a fresh fix brief otherwise.
+6. **Integrate** — a fresh `tester` diffs the named commit or range, runs the
+   suite, and reports raw results.
 
-Delegation is serialized per model: one task per provider at a time. On
+Planner, explorer, reviewer and tester always start fresh; the orchestrator is
+the only session that spans the whole job (a coder session may span one phase
+on split setups, above). Delegation is serialized per model: one task per
+provider at a time. On
 split-model setups the orchestrator batches `review(N)`/`test(N)` with
 `coding(N+1)` in **one message** for file-disjoint tasks, so the builder keeps
 working while the reviewer/tester agents read; a lone reviewer would block the
@@ -41,8 +46,8 @@ rejects same-model tasks. Two coders can never run in parallel.
 | `orchestrator` | primary | own role (default: planner) | Decompose, delegate, integrate. No app code, no shell; may read only the project docs (`PLAN.md`, `AGENTS.md`, `INTEGRATION.md`, `DECISIONS.md`, `COMPLETION.md`) and `.orchestration/` state. |
 | `planner` | subagent | own role | Write `PLAN.md` and `AGENTS.md`. Docs only. |
 | `explorer` | subagent | own role (default: builder) | Read-only codebase mapping. |
-| `coder` | subagent | own role | Implement bounded tasks within one phase's session; may call `tester`. |
-| `reviewer` | subagent | own role (default: planner) | Read-only two-stage review; packet-first, tests presence-checked only. |
+| `coder` | subagent | own role | Implement bounded tasks; resumed within a phase only on split-provider setups; may call `tester`. |
+| `reviewer` | subagent | own role (default: planner) | Read-only two-stage review in a fresh session; diffs the `review-of` commit; tests presence-checked only. |
 | `tester` | subagent | own role (default: planner) | Write/run tests, report results verbatim. |
 
 ## Commands
@@ -66,8 +71,8 @@ rejects same-model tasks. Two coders can never run in parallel.
   fully serial; two coders can never run in parallel; different providers may
   overlap (pipeline review(N) with coding(N+1)).
 - `plugins/compaction-ledger.js` — injects PLAN.md, AGENTS.md, DECISIONS.md and
-  INTEGRATION.md into compaction summaries so a resumed coder session re-reads
-  its durable memory instead of trusting a lossy summary.
+  INTEGRATION.md into compaction summaries so a long-running coder session
+  re-reads its durable memory instead of trusting a lossy summary.
 - `plugins/process-gate.js` — turns the review/coverage rules into checks: it
   validates coder briefs against PLAN.md work items (and flags a PLAN.md that
   declares no work items at all, which would otherwise make every check
@@ -128,14 +133,16 @@ ln -sf "$PWD/plugins/"*.js ~/.config/opencode/plugins/
 falling back to the planner model (orchestrator, reviewer, tester) or the
 builder model (explorer); give several roles the same model to collapse them.
 Flags: role pickers `--orchestrator/--planner/--reviewer/--tester/--builder/--explorer`,
-`--list`, `--render`, `--think` / `--no-think`, `--sessions persistent|fresh`,
-`--no-link`, `--force`. See [INSTALL.md](INSTALL.md) for the manual path.
+`--list`, `--render`, `--think` / `--no-think`, `--no-link`, `--force`. See
+[INSTALL.md](INSTALL.md) for the manual path.
 
-Session mode is a render-time choice:
-- `persistent` (default) — one resumable coder session per phase; continuity
-  across tasks, guarded by the compaction ledger.
-- `fresh` — a new coder session per task; maximum isolation, no cross-task
-  memory beyond the files.
+Coder session mode is derived at render time from the provider split:
+- builder on a different provider than the orchestrator → `persistent`: one
+  resumable coder session per phase, guarded by the compaction ledger.
+- builder shares the orchestrator's provider → `fresh`: a new coder session per
+  task, so no subagent session competes with the orchestrator's.
+
+Planner, explorer, reviewer and tester always run in fresh sessions.
 
 `bench-models.py` benchmarks prefill and decode speed of a shortlist of
 models (interactive multi-select, `-n` runs, `-j` parallel jobs, `--json`
@@ -157,10 +164,11 @@ escape into the parent workspace. In each project, run `/init-agents` once.
   contract (answer-first, 20-word sentences, verbatim paths/errors, no
   tool-call narration) so all models spend fewer output tokens; safety
   warnings and blocked work still get full sentences.
-- **Session mode is configurable** — `--sessions persistent` (default) runs one
-  resumable coder session per phase; `--sessions fresh` starts a new coder per
-  task. Either way, PLAN.md, DECISIONS.md and INTEGRATION.md are the durable
-  memory.
+- **Session mode auto-derives** — one resumable coder session per phase when
+  the builder runs on a different provider than the orchestrator; a fresh coder
+  per task otherwise. Planner, explorer, reviewer and tester are always fresh;
+  the orchestrator is the only session that spans the whole job. Either way,
+  PLAN.md, DECISIONS.md and INTEGRATION.md are the durable memory.
 - **Wiring ledger** — INTEGRATION.md (module → exports → consumers) is updated
   every task and audited by the reviewer, so features can't land as dead code.
 - **One task per model** — the serialize-task plugin reserves the provider and

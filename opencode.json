@@ -58,7 +58,7 @@
     },
 
     "coder": {
-      "description": "Bounded implementer. Receives ONE scoped task with fresh context and implements it end to end. May spawn the tester to validate its own work (gated by task permission below).",
+      "description": "Bounded implementer. Receives ONE scoped task per dispatch; starts fresh at each phase head and is resumed within the phase on split-model setups. May spawn the tester to validate its own work (gated by task permission below).",
       "mode": "subagent",
       "temperature": 0.1,
       "permission": {

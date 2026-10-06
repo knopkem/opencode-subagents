@@ -3,8 +3,9 @@ description: Implement the approved PLAN.md task by task
 agent: orchestrator
 ---
 
-Implement the approved PLAN.md, following your configured session policy
-(fresh per task, or one resumable session per phase — see your dispatch rules).
+Implement the approved PLAN.md, following the rendered session policy
+(auto-derived: fresh per task, or one resumable session per phase — see your
+dispatch rules).
 
 Group its tasks into phases by integration seam. For each task:
 1. Dispatch `@coder` with a self-contained brief: goal, files, acceptance

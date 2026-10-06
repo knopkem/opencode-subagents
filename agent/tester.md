@@ -4,6 +4,8 @@ description: >-
   returning pass/fail plus failures. Invoked by the coder or the orchestrator.
 mode: subagent
 model: __TESTER_MODEL__
+chat_template_kwargs:
+  enable_thinking: false
 temperature: 0.1
 steps: 60
 permission:

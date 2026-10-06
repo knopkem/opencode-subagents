@@ -5,6 +5,8 @@ description: >-
   review after the coder finishes.
 mode: subagent
 model: __REVIEWER_MODEL__
+chat_template_kwargs:
+  enable_thinking: false
 temperature: 0.1
 steps: 80
 permission:

@@ -8,6 +8,13 @@
 // The provider comes from the subagent's rendered frontmatter
 // (`model: provider/model-id`) in the opencode config agent directory, so
 // set-models.py changes are picked up without touching this file.
+//
+// Locks are acquired in `tool.execute.before` and released in
+// `tool.execute.after`, but opencode skips `tool.execute.after` when a task
+// call fails before executing (e.g. "Subagent depth limit reached", an abort,
+// or a cancel). The `event` hook therefore also releases on tool parts that
+// reach a terminal state; without it those calls leak their lock until the
+// stale sweep and block every later task on the same provider.
 
 import fs from "node:fs"
 import os from "node:os"
@@ -41,14 +48,24 @@ function keysFor(agent) {
   return [`model:${providerOf(name)}`, `agent:${name}`]
 }
 
-function release(keys) {
-  for (const key of keys) running.delete(key)
+function release(keys, callID) {
+  for (const key of keys) {
+    const entry = running.get(key)
+    if (!entry) continue
+    // Never release a lock that a newer call already owns.
+    if (callID != null && entry.callID !== callID) continue
+    if (callID == null && calls.has(entry.callID)) continue
+    running.delete(key)
+  }
 }
 
 function sweep() {
   const cutoff = Date.now() - STALE_MS
-  for (const [key, at] of running) {
-    if (at < cutoff) running.delete(key)
+  for (const [key, entry] of running) {
+    if (entry.at < cutoff) running.delete(key)
+  }
+  for (const [callID, keys] of calls) {
+    if (!keys.some((key) => running.has(key))) calls.delete(callID)
   }
 }
 
@@ -56,6 +73,14 @@ function label(key) {
   return key.startsWith("model:")
     ? `model "${key.slice(6)}"`
     : `agent "${key.slice(6)}"`
+}
+
+function isTerminalTaskPart(part) {
+  return (
+    part?.type === "tool" &&
+    part.tool === "task" &&
+    (part.state?.status === "completed" || part.state?.status === "error")
+  )
 }
 
 export const OneTaskPerModel = async () => ({
@@ -71,7 +96,7 @@ export const OneTaskPerModel = async () => ({
       )
     }
     const now = Date.now()
-    for (const key of keys) running.set(key, now)
+    for (const key of keys) running.set(key, { at: now, callID: input.callID })
     if (input.callID) calls.set(input.callID, keys)
   },
   "tool.execute.after": async (input, output) => {
@@ -84,7 +109,16 @@ export const OneTaskPerModel = async () => ({
         output?.args?.agent
       if (agent) keys = keysFor(agent)
     }
-    if (keys) release(keys)
+    if (keys) release(keys, input.callID)
     if (input?.callID) calls.delete(input.callID)
+  },
+  event: async ({ event }) => {
+    if (event?.type !== "message.part.updated") return
+    const part = event.properties?.part
+    if (!isTerminalTaskPart(part)) return
+    const keys = part.callID ? calls.get(part.callID) : undefined
+    if (!keys) return
+    release(keys, part.callID)
+    calls.delete(part.callID)
   },
 })

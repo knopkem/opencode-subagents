@@ -9,7 +9,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { execFileSync } from "node:child_process"
-import { ProcessGate, __internals } from "../process-gate.js"
+import { ProcessGate } from "../process-gate.js"
+
+const internals = ProcessGate.__internals
 
 const PLAN = `# PLAN
 
@@ -105,7 +107,7 @@ function writeVerify(dir, commit) {
 
 test("parsePlan extracts work items and phases", () => {
   const dir = makeProject()
-  const items = __internals.parsePlan(dir)
+  const items = internals.parsePlan(dir)
   assert.equal(items.size, 2)
   assert.equal(items.get("P6.1").phase, "P6")
   assert.match(items.get("P6.2").title, /app css/)
@@ -113,11 +115,11 @@ test("parsePlan extracts work items and phases", () => {
 
 test("coderBriefViolations flags missing sections, untracked IDs, and unknown IDs", () => {
   const dir = makeProject()
-  const missing = __internals.coderBriefViolations(dir, coderBrief(["P6.1"], { omit: "## Gates" }))
+  const missing = internals.coderBriefViolations(dir, coderBrief(["P6.1"], { omit: "## Gates" }))
   assert.ok(missing.violations.some((v) => v.includes("## Gates")))
-  const unknown = __internals.coderBriefViolations(dir, coderBrief(["P9.9"]))
+  const unknown = internals.coderBriefViolations(dir, coderBrief(["P9.9"]))
   assert.ok(unknown.violations.some((v) => v.includes("P9.9")))
-  const noIds = __internals.coderBriefViolations(dir, coderBrief([]))
+  const noIds = internals.coderBriefViolations(dir, coderBrief([]))
   assert.ok(noIds.violations.some((v) => v.includes("cites no work-item IDs")))
 })
 
@@ -132,7 +134,7 @@ test("warn mode logs a brief that drops a plan item instead of blocking", async 
   await after(handlers, "c1", { subagent_type: "coder" })
   const log = violations(dir)
   assert.ok(log.length >= 0) // dropping an item is legal per-task; coverage catches it at the gate
-  const phase = __internals.evaluatePhase(dir, "P6", { requireVerify: false })
+  const phase = internals.evaluatePhase(dir, "P6", { requireVerify: false })
   assert.equal(phase.ready, false)
   assert.ok(phase.problems.some((p) => p.includes("P6.2")))
 })
@@ -224,16 +226,16 @@ test("compliant flow: coverage, review verdicts, verify and completion all pass"
   appendReview(dir, { reviewOf: commit2, planIds: ["P6.2"], verdict: "ship" })
   await after(handlers, "r2", { subagent_type: "reviewer" })
 
-  const phase = __internals.evaluatePhase(dir, "P6", { requireVerify: true })
+  const phase = internals.evaluatePhase(dir, "P6", { requireVerify: true })
   assert.equal(phase.ready, false) // verify not yet produced
   assert.ok(phase.problems.some((p) => p.includes("verify.json")))
 
   writeVerify(dir, commit2)
-  const phase2 = __internals.evaluatePhase(dir, "P6", { requireVerify: true })
+  const phase2 = internals.evaluatePhase(dir, "P6", { requireVerify: true })
   assert.deepEqual(phase2.problems, [])
   assert.equal(phase2.ready, true)
 
-  const completion = __internals.evaluateCompletion(dir)
+  const completion = internals.evaluateCompletion(dir)
   assert.equal(completion.ready, true)
 
   const beforeCount = violations(dir).length
@@ -273,7 +275,7 @@ test("a rework verdict blocks the phase", async () => {
   appendReview(dir, { reviewOf: commit, planIds: ["P6.1", "P6.2"], verdict: "rework" })
   await after(handlers, "r1", { subagent_type: "reviewer" })
   writeVerify(dir, commit)
-  const phase = __internals.evaluatePhase(dir, "P6", { requireVerify: true })
+  const phase = internals.evaluatePhase(dir, "P6", { requireVerify: true })
   assert.equal(phase.ready, false)
   assert.ok(phase.problems.some((p) => /rework/.test(p)))
 })
@@ -291,7 +293,7 @@ test("PLAN.md modified during a coder task is logged", async () => {
 test("modeFor: env overrides project config, config overrides default", () => {
   const dir = makeProject({ mode: "warn" })
   delete process.env.PROCESS_GATE
-  assert.equal(__internals.modeFor(dir), "warn")
+  assert.equal(internals.modeFor(dir), "warn")
   process.env.PROCESS_GATE = "off"
-  assert.equal(__internals.modeFor(dir), "off")
+  assert.equal(internals.modeFor(dir), "off")
 })

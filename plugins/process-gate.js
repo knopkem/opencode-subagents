@@ -545,8 +545,9 @@ export const ProcessGate = async ({ directory }) => {
   return handlers
 }
 
-// Internal surface for tests. Not part of the plugin API.
-export const __internals = {
+// Internal surface for tests, attached to the factory so the module exposes a
+// single plugin export (the loader treats every export as a plugin factory).
+ProcessGate.__internals = {
   parsePlan,
   extractIds,
   coderBriefViolations,

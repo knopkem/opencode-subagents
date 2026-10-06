@@ -29,7 +29,9 @@ permission:
   grep: deny
   list: deny
   edit: deny
-  bash: deny
+  bash:
+    "*": deny
+    "true": allow
   webfetch: deny
   websearch: deny
   task:
